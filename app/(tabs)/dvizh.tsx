@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,175 +6,274 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  Animated,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Card } from '@/components/ui/Card';
 import { RarityBadge } from '@/components/ui/RarityBadge';
-import { Colors, Fonts, FontSize, Radius, Spacing } from '@/constants/tokens';
+import { Colors, Fonts, FontSize, Radius, Rarities, RarityKey, Spacing } from '@/constants/tokens';
 
-// Placeholder quest shown before Supabase/AI is connected (Step 3)
 const DEMO_QUEST = {
   title: 'Тайный агент',
-  task:
-    'Подойди к случайному прохожему и скажи, что ты потерял питомца-осьминога. Сними реакцию.',
+  task: 'Подойди к случайному прохожему и скажи, что ты потерял питомца-осьминога. Сними реакцию.',
   category: 'Социальный',
+  categoryIcon: 'people-outline' as const,
   difficulty: 3,
-  rarity: 'Эпик' as const,
+  rarity: 'Эпик' as RarityKey,
   xp: 150,
   coins: 80,
+  timeMin: 15,
 };
 
+// Pulsing animated dot
+function PulseDot({ color }: { color: string }) {
+  const anim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return (
+    <Animated.View
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: color,
+        opacity: anim,
+        shadowColor: color,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 4,
+      }}
+    />
+  );
+}
+
+// Press-scale button wrapper
+function PressButton({
+  onPress,
+  children,
+  style,
+}: {
+  onPress: () => void;
+  children: React.ReactNode;
+  style?: object;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pressIn = () =>
+    Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 30 }).start();
+  const pressOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+
+  return (
+    <Pressable onPressIn={pressIn} onPressOut={pressOut} onPress={onPress}>
+      <Animated.View style={[{ transform: [{ scale }] }, style]}>{children}</Animated.View>
+    </Pressable>
+  );
+}
+
 export default function DvizhScreen() {
-  const [questReady] = useState(true);
+  const rarity = Rarities[DEMO_QUEST.rarity];
+
+  // Quest card entrance animation
+  const cardAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(cardAnim, {
+      toValue: 1,
+      tension: 60,
+      friction: 10,
+      useNativeDriver: true,
+      delay: 200,
+    }).start();
+  }, []);
+
+  const cardStyle = {
+    opacity: cardAnim,
+    transform: [{ translateY: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [32, 0] }) }],
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+
+        {/* ── Header ── */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.appName}>ДВИЖ</Text>
+            <Text style={styles.wordmark}>ДВИЖ</Text>
             <View style={styles.gmRow}>
-              <View style={styles.onlineDot} />
+              <PulseDot color={Colors.jade} />
               <Text style={styles.gmLabel}>Гейм-мастер онлайн</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.coinBadge}>
+
+          <TouchableOpacity style={styles.coinBadge} activeOpacity={0.8}>
             <Ionicons name="logo-bitcoin" size={14} color={Colors.gold} />
-            <Text style={styles.coinCount}>420</Text>
+            <Text style={styles.coinText}>420</Text>
           </TouchableOpacity>
         </View>
 
-        {/* GM terminal */}
-        <Card style={styles.terminal}>
-          <Text style={styles.terminalPrefix}>{'>'} GM_SYSTEM</Text>
-          <Text style={styles.terminalText}>
-            Анализирую твой район... Прокладываю квест... Готово.
+        {/* ── GM terminal ── */}
+        <View style={styles.terminal}>
+          <Text style={styles.terminalLine}>
+            <Text style={styles.terminalPrompt}>{'> '}</Text>
+            <Text style={styles.terminalText}>Анализирую район... квест готов.</Text>
           </Text>
-          <Text style={styles.terminalCursor}>█</Text>
-        </Card>
+        </View>
 
-        {/* Quest card */}
-        {questReady && (
-          <Card glowColor={Colors.violet} style={styles.questCard}>
-            <LinearGradient
-              colors={['rgba(155,140,255,0.08)', 'transparent']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <View style={styles.questHeader}>
+        {/* ── Quest card ── */}
+        <Animated.View style={[styles.card, cardStyle]}>
+          {/* Rarity top bar */}
+          <LinearGradient
+            colors={[rarity.color, 'transparent']}
+            style={styles.rarityBar}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          />
+
+          {/* Ambient glow bg */}
+          <LinearGradient
+            colors={[rarity.glow, 'transparent']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+
+          <View style={styles.cardInner}>
+            {/* Badge row */}
+            <View style={styles.badgeRow}>
               <RarityBadge rarity={DEMO_QUEST.rarity} />
-              <View style={styles.diffRow}>
+              <View style={styles.flames}>
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Ionicons
                     key={i}
                     name={i < DEMO_QUEST.difficulty ? 'flame' : 'flame-outline'}
-                    size={12}
+                    size={13}
                     color={i < DEMO_QUEST.difficulty ? Colors.pink : Colors.textDisabled}
                   />
                 ))}
               </View>
             </View>
 
+            {/* Title */}
             <Text style={styles.questTitle}>{DEMO_QUEST.title}</Text>
+
+            {/* Task */}
             <Text style={styles.questTask}>{DEMO_QUEST.task}</Text>
 
-            <View style={styles.categoryTag}>
-              <Ionicons name="people-outline" size={12} color={Colors.sky} />
+            {/* Category */}
+            <View style={styles.categoryRow}>
+              <Ionicons name={DEMO_QUEST.categoryIcon} size={13} color={Colors.sky} />
               <Text style={styles.categoryText}>{DEMO_QUEST.category}</Text>
+              <View style={styles.dot} />
+              <Ionicons name="time-outline" size={13} color={Colors.textMuted} />
+              <Text style={styles.timeText}>~{DEMO_QUEST.timeMin} мин</Text>
             </View>
 
-            <View style={styles.rewardRow}>
-              <View style={styles.rewardItem}>
+            {/* Divider */}
+            <View style={styles.divider} />
+
+            {/* Rewards */}
+            <View style={styles.rewards}>
+              <View style={styles.rewardChip}>
                 <Ionicons name="star" size={14} color={Colors.lime} />
-                <Text style={styles.rewardValue}>{DEMO_QUEST.xp} XP</Text>
+                <Text style={[styles.rewardVal, { color: Colors.lime }]}>{DEMO_QUEST.xp} XP</Text>
               </View>
-              <View style={styles.rewardItem}>
+              <View style={styles.rewardChip}>
                 <Ionicons name="logo-bitcoin" size={14} color={Colors.gold} />
-                <Text style={styles.rewardValue}>{DEMO_QUEST.coins} монет</Text>
-              </View>
-              <View style={styles.rewardItem}>
-                <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
-                <Text style={[styles.rewardValue, { color: Colors.textMuted }]}>~15 мин</Text>
+                <Text style={[styles.rewardVal, { color: Colors.gold }]}>{DEMO_QUEST.coins}</Text>
               </View>
             </View>
-          </Card>
-        )}
+          </View>
+        </Animated.View>
 
-        {/* Actions */}
-        <TouchableOpacity style={styles.btnPrimary} activeOpacity={0.85}>
+        {/* ── CTA ── */}
+        <PressButton onPress={() => {}} style={styles.ctaWrap}>
           <LinearGradient
-            colors={[Colors.lime, '#a8d93a']}
-            style={styles.btnGradient}
+            colors={[Colors.lime, '#9ed630']}
+            style={styles.cta}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
           >
             <Ionicons name="flash" size={20} color={Colors.background} />
-            <Text style={styles.btnPrimaryText}>ПРИНЯТЬ ДВИЖ</Text>
+            <Text style={styles.ctaText}>ПРИНЯТЬ ДВИЖ</Text>
           </LinearGradient>
-        </TouchableOpacity>
+        </PressButton>
 
-        <View style={styles.secondaryActions}>
-          <TouchableOpacity style={styles.btnSecondary}>
+        {/* ── Secondary actions ── */}
+        <View style={styles.secondRow}>
+          <TouchableOpacity style={styles.secBtn} activeOpacity={0.7}>
             <Ionicons name="refresh-outline" size={16} color={Colors.textMuted} />
-            <Text style={styles.btnSecondaryText}>Реролл (−10 монет)</Text>
+            <Text style={styles.secText}>Реролл</Text>
+            <View style={styles.costPill}>
+              <Ionicons name="logo-bitcoin" size={10} color={Colors.gold} />
+              <Text style={styles.costText}>10</Text>
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.btnSecondary}>
-            <Ionicons name="skip-forward-outline" size={16} color={Colors.textMuted} />
-            <Text style={styles.btnSecondaryText}>Пропустить</Text>
+
+          <TouchableOpacity style={styles.secBtn} activeOpacity={0.7}>
+            <Ionicons name="play-skip-forward-outline" size={16} color={Colors.textMuted} />
+            <Text style={styles.secText}>Пропустить</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Streak */}
-        <Card style={styles.streakCard}>
-          <View style={styles.streakRow}>
-            <Ionicons name="bonfire" size={22} color={Colors.pink} />
-            <View style={styles.streakInfo}>
+        {/* ── Streak card ── */}
+        <View style={styles.streakCard}>
+          <View style={styles.streakLeft}>
+            <Ionicons name="bonfire" size={20} color={Colors.pink} />
+            <View>
               <Text style={styles.streakTitle}>Стрик 3 дня 🔥</Text>
-              <Text style={styles.streakSub}>Выполни движ сегодня, чтобы не потерять</Text>
+              <Text style={styles.streakSub}>Не прерывай — завтра будет ×1.3</Text>
             </View>
-            <Text style={[styles.streakBonus, { color: Colors.gold }]}>+30%</Text>
           </View>
-        </Card>
+          <Text style={styles.streakBonus}>+30%</Text>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  scroll: { flex: 1 },
-  content: { padding: Spacing.md, paddingBottom: Spacing.xxl },
+  safe: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  scroll: {
+    padding: Spacing.md,
+    paddingBottom: 32,
+    gap: Spacing.md,
+  },
 
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
   },
-  appName: {
+  wordmark: {
     fontFamily: Fonts.bold,
-    fontSize: FontSize.display,
+    fontSize: 40,
     color: Colors.lime,
-    letterSpacing: 4,
-    lineHeight: 38,
+    letterSpacing: 6,
+    lineHeight: 44,
+    // Lime glow text on web via shadow
+    textShadowColor: Colors.limeGlow,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 20,
   },
-  gmRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  onlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.jade,
-    shadowColor: Colors.jade,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
+  gmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
   },
   gmLabel: {
     fontFamily: Fonts.mono,
@@ -185,151 +284,201 @@ const styles = StyleSheet.create({
   coinBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     backgroundColor: Colors.goldDim,
     borderRadius: Radius.full,
     borderWidth: 1,
     borderColor: Colors.gold,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
-    marginTop: 4,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 7,
+    marginTop: 6,
   },
-  coinCount: {
+  coinText: {
     fontFamily: Fonts.monoBold,
     fontSize: FontSize.md,
     color: Colors.gold,
   },
 
+  // Terminal
   terminal: {
-    marginBottom: Spacing.md,
-    borderColor: Colors.jade,
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.jade + '55',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
   },
-  terminalPrefix: {
-    fontFamily: Fonts.mono,
-    fontSize: FontSize.xs,
-    color: Colors.jade,
-    marginBottom: 4,
-    letterSpacing: 1,
-  },
-  terminalText: {
+  terminalLine: {
     fontFamily: Fonts.mono,
     fontSize: FontSize.sm,
-    color: Colors.textSecondary,
     lineHeight: 18,
   },
-  terminalCursor: {
-    fontFamily: Fonts.mono,
-    fontSize: FontSize.sm,
+  terminalPrompt: {
     color: Colors.jade,
-    marginTop: 2,
+  },
+  terminalText: {
+    color: Colors.textSecondary,
   },
 
-  questCard: {
-    marginBottom: Spacing.md,
+  // Quest card
+  card: {
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
     overflow: 'hidden',
+    shadowColor: Colors.violet,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  questHeader: {
+  rarityBar: {
+    height: 3,
+    width: '100%',
+  },
+  cardInner: {
+    padding: Spacing.md + 2,
+    gap: Spacing.sm,
+  },
+  badgeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
   },
-  diffRow: { flexDirection: 'row', gap: 2 },
+  flames: {
+    flexDirection: 'row',
+    gap: 2,
+  },
   questTitle: {
     fontFamily: Fonts.bold,
-    fontSize: FontSize.xxl,
+    fontSize: FontSize.xxl + 2,
     color: Colors.text,
-    marginBottom: Spacing.xs,
+    lineHeight: 32,
   },
   questTask: {
     fontFamily: Fonts.regular,
     fontSize: FontSize.md,
     color: Colors.textSecondary,
     lineHeight: 22,
-    marginBottom: Spacing.md,
   },
-  categoryTag: {
+  categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: Spacing.md,
+    gap: 5,
   },
   categoryText: {
     fontFamily: Fonts.medium,
     fontSize: FontSize.sm,
     color: Colors.sky,
-    letterSpacing: 0.3,
   },
-  rewardRow: {
+  dot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+  },
+  timeText: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: Spacing.xs,
+  },
+  rewards: {
     flexDirection: 'row',
     gap: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: Spacing.sm,
   },
-  rewardItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rewardValue: {
+  rewardChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  rewardVal: {
     fontFamily: Fonts.semiBold,
-    fontSize: FontSize.sm,
-    color: Colors.text,
+    fontSize: FontSize.md,
   },
 
-  btnPrimary: {
+  // CTA
+  ctaWrap: {
     borderRadius: Radius.lg,
     overflow: 'hidden',
-    marginBottom: Spacing.sm,
     shadowColor: Colors.lime,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  btnGradient: {
+  cta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    paddingVertical: 16,
+    paddingVertical: 17,
   },
-  btnPrimaryText: {
+  ctaText: {
     fontFamily: Fonts.bold,
     fontSize: FontSize.lg,
     color: Colors.background,
-    letterSpacing: 2,
+    letterSpacing: 2.5,
   },
 
-  secondaryActions: {
+  // Secondary row
+  secondRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    marginBottom: Spacing.lg,
   },
-  btnSecondary: {
+  secBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 12,
+    backgroundColor: Colors.surface2,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: Colors.surface2,
   },
-  btnSecondaryText: {
+  secText: {
     fontFamily: Fonts.medium,
     fontSize: FontSize.sm,
     color: Colors.textMuted,
   },
-
-  streakCard: {
-    borderColor: Colors.pinkDim,
-  },
-  streakRow: {
+  costPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: 2,
+    backgroundColor: Colors.goldDim,
+    borderRadius: Radius.full,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
   },
-  streakInfo: { flex: 1 },
+  costText: {
+    fontFamily: Fonts.monoBold,
+    fontSize: 9,
+    color: Colors.gold,
+  },
+
+  // Streak
+  streakCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.pinkDim,
+    padding: Spacing.md,
+  },
+  streakLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   streakTitle: {
     fontFamily: Fonts.semiBold,
     fontSize: FontSize.md,
@@ -343,6 +492,7 @@ const styles = StyleSheet.create({
   },
   streakBonus: {
     fontFamily: Fonts.monoBold,
-    fontSize: FontSize.lg,
+    fontSize: FontSize.xl,
+    color: Colors.gold,
   },
 });

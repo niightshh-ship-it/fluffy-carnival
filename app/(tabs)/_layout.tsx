@@ -1,23 +1,59 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, View, StyleSheet } from 'react-native';
-import { Colors, Fonts, FontSize } from '@/constants/tokens';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { Colors, Fonts, FontSize, Spacing } from '@/constants/tokens';
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
+const TABS = [
+  { name: 'dvizh',      label: 'ДВИЖ',    icon: 'flash',    iconOff: 'flash-outline'    },
+  { name: 'feed',       label: 'ЛЕНТА',   icon: 'grid',     iconOff: 'grid-outline'     },
+  { name: 'pet',        label: 'ЖОРИК',   icon: 'heart',    iconOff: 'heart-outline'    },
+  { name: 'challenges', label: 'ВЫЗОВЫ',  icon: 'trophy',   iconOff: 'trophy-outline'   },
+  { name: 'profile',    label: 'ПРОФИЛЬ', icon: 'person',   iconOff: 'person-outline'   },
+] as const;
 
-interface TabIconProps {
-  name: IconName;
-  activeName: IconName;
-  color: string;
-  focused: boolean;
-  size: number;
-}
-
-function TabIcon({ name, activeName, color, focused, size }: TabIconProps) {
+function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   return (
-    <View style={focused ? styles.iconActive : undefined}>
-      {focused && <View style={[styles.glow, { backgroundColor: Colors.limeGlow }]} />}
-      <Ionicons name={focused ? activeName : name} size={size} color={color} />
+    <View style={styles.bar}>
+      <View style={styles.row}>
+        {state.routes.map((route, index) => {
+          const tab = TABS.find((t) => t.name === route.name);
+          if (!tab) return null;
+          const focused = state.index === index;
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              style={styles.item}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate(route.name)}
+            >
+              {/* Active pill indicator */}
+              <View style={[styles.pill, focused && styles.pillActive]} />
+
+              {/* Icon */}
+              <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+                <Ionicons
+                  name={(focused ? tab.icon : tab.iconOff) as any}
+                  size={22}
+                  color={focused ? Colors.background : Colors.textMuted}
+                />
+              </View>
+
+              {/* Label */}
+              <Text style={[styles.label, focused && styles.labelActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -25,86 +61,67 @@ function TabIcon({ name, activeName, color, focused, size }: TabIconProps) {
 export default function TabLayout() {
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: Colors.lime,
-        tabBarInactiveTintColor: Colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: Colors.surface1,
-          borderTopColor: Colors.border,
-          borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 84 : 68,
-          paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 12,
-        },
-        tabBarLabelStyle: {
-          fontFamily: Fonts.medium,
-          fontSize: FontSize.xs,
-          letterSpacing: 0.5,
-          marginTop: 2,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="dvizh"
-        options={{
-          title: 'ДВИЖ',
-          tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon name="flash-outline" activeName="flash" color={color} focused={focused} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="feed"
-        options={{
-          title: 'ЛЕНТА',
-          tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon name="grid-outline" activeName="grid" color={color} focused={focused} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="pet"
-        options={{
-          title: 'ЖОРИК',
-          tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon name="heart-outline" activeName="heart" color={color} focused={focused} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="challenges"
-        options={{
-          title: 'ВЫЗОВЫ',
-          tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon name="trophy-outline" activeName="trophy" color={color} focused={focused} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'ПРОФИЛЬ',
-          tabBarIcon: ({ color, focused, size }) => (
-            <TabIcon name="person-outline" activeName="person" color={color} focused={focused} size={size} />
-          ),
-        }}
-      />
-    </Tabs>
+      tabBar={(props) => <CustomTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  iconActive: {
-    position: 'relative',
+  bar: {
+    backgroundColor: Colors.surface1,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+    paddingTop: 8,
+    paddingHorizontal: Spacing.xs,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  item: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+    paddingTop: 4,
+  },
+  pill: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'transparent',
+    marginBottom: 2,
+  },
+  pillActive: {
+    backgroundColor: Colors.lime,
+    shadowColor: Colors.lime,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+  },
+  iconWrap: {
+    width: 40,
+    height: 32,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glow: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    opacity: 0.7,
+  iconWrapActive: {
+    backgroundColor: Colors.lime,
+    shadowColor: Colors.lime,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  label: {
+    fontFamily: Fonts.medium,
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    letterSpacing: 0.3,
+  },
+  labelActive: {
+    color: Colors.lime,
+    fontFamily: Fonts.bold,
   },
 });
