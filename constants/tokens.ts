@@ -2,51 +2,51 @@
 // Dark arcade aesthetic: dark canvas + vivid accent punches
 
 export const Colors = {
-  // Backgrounds — deep ink canvas, surfaces have a faint violet tint for warmth
-  background: '#08080f',
-  surface1: '#15131f',
-  surface2: '#1d1a2c',
-  surface3: '#272238',
-  border: '#332d48',
+  // Backgrounds — calm dark arcade canvas
+  background: '#0b0c10',
+  surface1: '#14161f',
+  surface2: '#1a1d28',
+  surface3: '#21253a',
+  border: '#2a2d3e',
 
   // Typography
-  text: '#f6f4ff',
-  textSecondary: '#cfcbe4',
-  textMuted: '#948fb0',
-  textDisabled: '#4f4a66',
+  text: '#f1f0f6',
+  textSecondary: '#c8c7d4',
+  textMuted: '#8a899c',
+  textDisabled: '#4a4a5a',
 
-  // Primary accent — punchy neon lime
-  lime: '#d4ff45',
-  limeGlow: 'rgba(212, 255, 69, 0.4)',
-  limeDim: 'rgba(212, 255, 69, 0.14)',
+  // Primary accent — lime (main CTA, one dominant per screen)
+  lime: '#c6f24e',
+  limeGlow: 'rgba(198, 242, 78, 0.25)',
+  limeDim: 'rgba(198, 242, 78, 0.12)',
 
-  // Energy / likes — hot neon pink
-  pink: '#ff3d8a',
-  pinkGlow: 'rgba(255, 61, 138, 0.42)',
-  pinkDim: 'rgba(255, 61, 138, 0.14)',
+  // Energy / likes
+  pink: '#ff4d8d',
+  pinkGlow: 'rgba(255, 77, 141, 0.25)',
+  pinkDim: 'rgba(255, 77, 141, 0.12)',
 
-  // Coins / status / rating — richer gold
-  gold: '#ffd76a',
-  goldGlow: 'rgba(255, 215, 106, 0.4)',
-  goldDim: 'rgba(255, 215, 106, 0.14)',
+  // Coins / status / rating
+  gold: '#e8c98a',
+  goldGlow: 'rgba(232, 201, 138, 0.25)',
+  goldDim: 'rgba(232, 201, 138, 0.12)',
 
-  // Pet (Хайпожорик) — electric jade
-  jade: '#4dffc4',
-  jadeDim: 'rgba(77, 255, 196, 0.14)',
+  // Pet (Хайпожорик)
+  jade: '#5fe3b0',
+  jadeDim: 'rgba(95, 227, 176, 0.12)',
 
-  // Rare quests / info — vivid sky
-  sky: '#3db4ff',
-  skyDim: 'rgba(61, 180, 255, 0.14)',
+  // Rare quests / info
+  sky: '#4db8ff',
+  skyDim: 'rgba(77, 184, 255, 0.12)',
 
-  // Epic quests — saturated violet
-  violet: '#a98bff',
-  violetDim: 'rgba(169, 139, 255, 0.16)',
+  // Epic quests
+  violet: '#9b8cff',
+  violetDim: 'rgba(155, 140, 255, 0.12)',
 
   // Rarity system
-  rarityCommon: '#948fb0',
-  rarityRare: '#3db4ff',
-  rarityEpic: '#a98bff',
-  rarityLegendary: '#ffd76a',
+  rarityCommon: '#8a899c',
+  rarityRare: '#4db8ff',
+  rarityEpic: '#9b8cff',
+  rarityLegendary: '#e8c98a',
 } as const;
 
 // Rarity tiers with full metadata

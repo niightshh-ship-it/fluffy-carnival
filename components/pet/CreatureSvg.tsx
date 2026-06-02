@@ -86,10 +86,11 @@ interface Props {
   size?: number;
   hype?: number;
   wild?: number;      // morph amplitude (chaos)
+  active?: boolean;   // pause the per-frame morph when the screen isn't focused
 }
 
 export const CreatureSvg = forwardRef<CreatureRef, Props>(
-  ({ size = 250, hype = 50, wild = 0.2 }, ref) => {
+  ({ size = 250, hype = 50, wild = 0.2, active = true }, ref) => {
     const pal = paletteForHype(hype);
     const H = size * (VB_H / VB);
 
@@ -111,11 +112,14 @@ export const CreatureSvg = forwardRef<CreatureRef, Props>(
     const burstV   = useSharedValue(1);
     const eyeWide  = useSharedValue(1);
 
-    // Continuous organic + buzzy clock
-    useFrameCallback((info) => {
+    // Continuous organic + buzzy clock (paused when not focused → no idle cost)
+    const frame = useFrameCallback((info) => {
       const dt = (info.timeSincePreviousFrame ?? 16) / 1000;
       clock.value += dt * 1.25;
     });
+    useEffect(() => {
+      frame.setActive(active);
+    }, [active]);
 
     useEffect(() => {
       breathe.value   = withRepeat(withTiming(1, { duration: 1900, easing: Easing.inOut(Easing.sin) }), -1, true);

@@ -16,11 +16,12 @@ interface Props {
   hunger: number;
   mood: number;
   onTap?: () => void;
+  active?: boolean;
 }
 
 const RENDER = 250;
 
-export const HypeBlob = forwardRef<HypeBlobRef, Props>(({ hype, onTap }, ref) => {
+export const HypeBlob = forwardRef<HypeBlobRef, Props>(({ hype, onTap, active = true }, ref) => {
   const creatureRef = useRef<CreatureRef>(null);
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
@@ -105,7 +106,7 @@ export const HypeBlob = forwardRef<HypeBlobRef, Props>(({ hype, onTap }, ref) =>
       </View>
 
       <Reanimated.View style={dragStyle} {...panResponder.panHandlers}>
-        <CreatureSvg ref={creatureRef} size={RENDER} hype={hype} wild={0.2} />
+        <CreatureSvg ref={creatureRef} size={RENDER} hype={hype} wild={0.2} active={active} />
       </Reanimated.View>
     </View>
   );

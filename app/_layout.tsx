@@ -12,8 +12,7 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
-import { GooBackground } from '@/components/GooBackground';
-import { FloatingBuddy } from '@/components/pet/FloatingBuddy';
+import { SmearBackground } from '@/components/SmearBackground';
 import { Colors } from '@/constants/tokens';
 
 SplashScreen.preventAutoHideAsync();
@@ -36,10 +35,10 @@ export default function RootLayout() {
 
   if (!loaded && !error) return null;
 
-  // Transparent navigator so the global goo background shows through
+  // Transparent navigator so the smeared-creature background shows through
   const scene = (
     <View style={styles.scene}>
-      <GooBackground />
+      <SmearBackground />
       <View style={styles.navLayer}>
         <Stack
           screenOptions={{
@@ -52,8 +51,6 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
         </Stack>
       </View>
-      {/* Persistent companion floating over everything */}
-      <FloatingBuddy hype={62} />
     </View>
   );
 

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, Animated,
@@ -23,6 +23,7 @@ export default function PetScreen() {
   const [hype,   setHype]   = useState(INIT.hype);
   const [coins,  setCoins]  = useState(INIT.coins);
   const [stage,  setStage]  = useState(INIT.stage);
+  const [focused, setFocused] = useState(true);
 
   const currentStage = PetStages[stage];
   const nextStage    = PetStages[stage + 1] ?? null;
@@ -30,6 +31,7 @@ export default function PetScreen() {
   // Entrance animation when tab gains focus
   useFocusEffect(
     useCallback(() => {
+      setFocused(true);
       entranceScale.setValue(0.4);
       entranceOpacity.setValue(0);
       Animated.parallel([
@@ -41,6 +43,7 @@ export default function PetScreen() {
         }),
       ]).start();
       return () => {
+        setFocused(false);
         // Shrink out when leaving tab
         Animated.parallel([
           Animated.timing(entranceScale,   { toValue: 0.4, duration: 180, useNativeDriver: true }),
@@ -129,6 +132,7 @@ export default function PetScreen() {
             hype={hype}
             hunger={hunger}
             mood={mood}
+            active={focused}
             onTap={() => setMood(m => Math.min(100, m + 3))}
           />
           <Text style={styles.tapHint}>тапай · тяни · корми хайпом</Text>

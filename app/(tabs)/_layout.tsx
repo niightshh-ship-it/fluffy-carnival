@@ -49,7 +49,7 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
               {/* Icon / blob */}
               {isPet ? (
                 <View style={[styles.blobWrap, focused && styles.blobWrapActive]}>
-                  <MiniBlobTab ref={blobRef} focused={focused} hype={50} />
+                  <MiniBlobTab ref={blobRef} focused={focused} />
                 </View>
               ) : (
                 <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
