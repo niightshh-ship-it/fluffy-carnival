@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "ДВИЖ",
+    "slug": "dvizh",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0c10",
+    "splash": {
+      "backgroundColor": "#0b0c10",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.dvizh.app"
+    },
+    "android": {
+      "package": "com.dvizh.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0b0c10"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "backgroundColor": "#0b0c10"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "dvizh",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
