@@ -244,7 +244,7 @@ export default function DvizhScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: 'transparent',
   },
   scroll: {
     padding: Spacing.md,

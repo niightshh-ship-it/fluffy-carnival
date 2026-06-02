@@ -85,14 +85,14 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={props => <CustomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: 'transparent' } }}
     />
   );
 }
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: Colors.surface1,
+    backgroundColor: 'rgba(21,19,31,0.82)',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingBottom: Platform.OS === 'ios' ? 22 : 6,

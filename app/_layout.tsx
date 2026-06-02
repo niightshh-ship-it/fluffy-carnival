@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { Platform, View, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
   SpaceGrotesk_400Regular,
   SpaceGrotesk_500Medium,
@@ -11,6 +12,8 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
+import { GooBackground } from '@/components/GooBackground';
+import { FloatingBuddy } from '@/components/pet/FloatingBuddy';
 import { Colors } from '@/constants/tokens';
 
 SplashScreen.preventAutoHideAsync();
@@ -33,34 +36,47 @@ export default function RootLayout() {
 
   if (!loaded && !error) return null;
 
-  const navigator = (
-    <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(tabs)" />
-    </Stack>
+  // Transparent navigator so the global goo background shows through
+  const scene = (
+    <View style={styles.scene}>
+      <GooBackground />
+      <View style={styles.navLayer}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: 'none',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </View>
+      {/* Persistent companion floating over everything */}
+      <FloatingBuddy hype={62} />
+    </View>
   );
 
-  if (isWeb) {
-    return (
-      <View style={styles.webOuter}>
-        <StatusBar style="light" />
-        <View style={styles.webPhone}>{navigator}</View>
-      </View>
-    );
-  }
-
   return (
-    <>
-      <StatusBar style="light" backgroundColor={Colors.background} />
-      {navigator}
-    </>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <StatusBar style="light" />
+      {isWeb ? (
+        <View style={styles.webOuter}>
+          <View style={styles.webPhone}>{scene}</View>
+        </View>
+      ) : (
+        scene
+      )}
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  scene: { flex: 1, backgroundColor: Colors.background },
+  navLayer: { ...StyleSheet.absoluteFillObject },
   webOuter: {
     flex: 1,
-    backgroundColor: '#060709',
+    backgroundColor: '#050507',
     alignItems: 'center',
     justifyContent: 'center',
   },

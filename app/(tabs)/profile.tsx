@@ -174,7 +174,7 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: Spacing.md, paddingBottom: Spacing.xxl },
 
   header: {

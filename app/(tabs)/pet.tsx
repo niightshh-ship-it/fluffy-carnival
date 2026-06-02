@@ -232,7 +232,7 @@ function ActionCard({ emoji, label, sub, accent, onPress }: {
 }
 
 const styles = StyleSheet.create({
-  safe:  { flex: 1, backgroundColor: Colors.background },
+  safe:  { flex: 1, backgroundColor: 'transparent' },
   scroll: { flex: 1 },
   scrollContent: { padding: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.md },
 
