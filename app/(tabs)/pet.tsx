@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,177 +6,266 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Card } from '@/components/ui/Card';
+import { HypeBlob, HypeBlobRef } from '@/components/pet/HypeBlob';
 import { StatBar } from '@/components/ui/StatBar';
 import { Colors, Economy, Fonts, FontSize, PetStages, Radius, Spacing } from '@/constants/tokens';
 
-// Placeholder pet state — will sync from Supabase in Step 7
-const DEMO_PET = {
-  name: 'Хайпожорик',
-  stage: 1,
-  level: 3,
-  hunger: 65,
-  mood: 80,
-  energy: 40,
-  hype: 62,
-};
-
-const currentStage = PetStages[DEMO_PET.stage];
+// ── Demo state (will come from Supabase in Step 7) ────────────────────────────
+const INIT = { stage: 1, level: 3, hunger: 65, mood: 80, energy: 40, hype: 42, coins: 420 };
 
 export default function PetScreen() {
-  const [hunger, setHunger] = useState(DEMO_PET.hunger);
-  const [mood, setMood] = useState(DEMO_PET.mood);
-  const [energy, setEnergy] = useState(DEMO_PET.energy);
-  const [hype, setHype] = useState(DEMO_PET.hype);
+  const blobRef = useRef<HypeBlobRef>(null);
 
-  function feed() {
-    setHunger(Math.min(100, hunger + 20));
-    setMood(Math.min(100, mood + 5));
+  const [hunger, setHunger] = useState(INIT.hunger);
+  const [mood,   setMood]   = useState(INIT.mood);
+  const [energy, setEnergy] = useState(INIT.energy);
+  const [hype,   setHype]   = useState(INIT.hype);
+  const [coins,  setCoins]  = useState(INIT.coins);
+  const [stage,  setStage]  = useState(INIT.stage);
+
+  const currentStage = PetStages[stage];
+  const nextStage    = PetStages[stage + 1] ?? null;
+
+  // ── Coin flash animation ──────────────────────────────────────────────────
+  const coinFlash = useRef(new Animated.Value(1)).current;
+  const flashCoins = () => {
+    Animated.sequence([
+      Animated.spring(coinFlash, { toValue: 1.4, speed: 60, useNativeDriver: true }),
+      Animated.spring(coinFlash, { toValue: 1,   speed: 20, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+  function feedHype() {
+    const cost = Economy.petFeedCostBase;
+    if (coins < cost) return;
+    setCoins(c => c - cost);
+    setHunger(h => Math.min(100, h + 18));
+    setMood(m => Math.min(100, m + 8));
+    setHype(h => {
+      const next = Math.min(100, h + 22);
+      // Evolution check
+      if (next >= 100 && stage < PetStages.length - 1) {
+        setTimeout(() => {
+          setStage(s => s + 1);
+          setHype(0);
+        }, 900);
+      }
+      return next;
+    });
+    blobRef.current?.triggerHypeBurst();
+    flashCoins();
   }
+
   function play() {
-    setMood(Math.min(100, mood + 20));
-    setEnergy(Math.max(0, energy - 10));
-  }
-  function walk() {
-    setEnergy(Math.min(100, energy + 25));
-    setMood(Math.min(100, mood + 10));
+    setMood(m => Math.min(100, m + 20));
+    setEnergy(e => Math.max(0, e - 12));
   }
 
-  const nextStage = PetStages[DEMO_PET.stage + 1];
+  function walk() {
+    setEnergy(e => Math.min(100, e + 28));
+    setMood(m => Math.min(100, m + 10));
+  }
+
+  function sleep() {
+    setEnergy(e => Math.min(100, e + 40));
+  }
+
+  // ── Hype progress bar color ───────────────────────────────────────────────
+  function hypeBarColor() {
+    if (hype < 30) return Colors.violet;
+    if (hype < 65) return Colors.pink;
+    return Colors.lime;
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>ЖОРИК</Text>
+
+      {/* ── Top bar ────────────────────────────────────────────────────────── */}
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.screenTitle}>ЖОРИК</Text>
+          <Text style={styles.stageName}>{currentStage.name}</Text>
+        </View>
+        <View style={styles.topRight}>
           <View style={styles.levelPill}>
-            <Text style={styles.levelText}>ур. {DEMO_PET.level}</Text>
+            <Text style={styles.levelText}>ур. {INIT.level}</Text>
           </View>
+          <Animated.View style={[styles.coinPill, { transform: [{ scale: coinFlash }] }]}>
+            <Ionicons name="logo-bitcoin" size={12} color={Colors.gold} />
+            <Text style={styles.coinText}>{coins}</Text>
+          </Animated.View>
+        </View>
+      </View>
+
+      {/* ── Blob arena (fixed, not scrollable) ─────────────────────────────── */}
+      <View style={styles.arena}>
+        <HypeBlob
+          ref={blobRef}
+          hype={hype}
+          hunger={hunger}
+          mood={mood}
+          onTap={() => setMood(m => Math.min(100, m + 3))}
+        />
+
+        {/* Tap hint — only shown when no interaction happened yet */}
+        <Text style={styles.tapHint}>тапай · тяни · корми</Text>
+      </View>
+
+      {/* ── Scrollable section ─────────────────────────────────────────────── */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+
+        {/* ── Hype progress ── */}
+        <View style={styles.hypeSection}>
+          <View style={styles.hypeHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Ionicons name="trending-up" size={14} color={hypeBarColor()} />
+              <Text style={[styles.hypeLabel, { color: hypeBarColor() }]}>ХАЙП</Text>
+            </View>
+            <Text style={[styles.hypePct, { color: hypeBarColor() }]}>{hype}%</Text>
+          </View>
+          <View style={styles.hypeTrack}>
+            <View style={[styles.hypeFill, { width: `${hype}%` as any, backgroundColor: hypeBarColor() }]} />
+            {[25, 50, 75].map(m => (
+              <View key={m} style={[styles.hypeTick, { left: `${m}%` as any }]} />
+            ))}
+          </View>
+          {nextStage ? (
+            <Text style={styles.hypeHint}>
+              До эволюции в «{nextStage.name}» {nextStage.emoji}: {100 - hype}%
+            </Text>
+          ) : (
+            <Text style={[styles.hypeHint, { color: Colors.gold }]}>
+              Максимальная эволюция достигнута ✨
+            </Text>
+          )}
         </View>
 
-        {/* Pet display */}
-        <Card glowColor={Colors.jade} style={styles.petCard}>
+        {/* ── Stats ── */}
+        <View style={styles.statsCard}>
+          <StatBar label="Сытость"   value={hunger} color={Colors.gold} />
+          <StatBar label="Настроение" value={mood}   color={Colors.pink} />
+          <StatBar label="Энергия"   value={energy} color={Colors.sky}  />
+        </View>
+
+        {/* ── FEED HYPE — primary action ── */}
+        <TouchableOpacity
+          style={[styles.feedBtn, coins < Economy.petFeedCostBase && styles.feedBtnDisabled]}
+          onPress={feedHype}
+          activeOpacity={0.82}
+        >
           <LinearGradient
-            colors={['rgba(95,227,176,0.06)', 'transparent']}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
+            colors={hype >= 65 ? [Colors.lime, '#9ed630'] : [Colors.violet, '#7a6dff']}
+            style={styles.feedGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <Text style={styles.feedEmoji}>⚡</Text>
+            <View>
+              <Text style={styles.feedTitle}>ДОКОРМИТЬ ХАЙПОМ</Text>
+              <Text style={styles.feedSub}>+22 хайп · +18 сытость</Text>
+            </View>
+            <View style={styles.feedCost}>
+              <Ionicons name="logo-bitcoin" size={11} color={Colors.background} />
+              <Text style={styles.feedCostText}>−{Economy.petFeedCostBase}</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* ── Other actions grid ── */}
+        <View style={styles.actionGrid}>
+          <ActionCard
+            emoji="🎮" label="Поиграть" sub="+20 настр."
+            accent={Colors.pink} onPress={play}
           />
-
-          <View style={styles.petBody}>
-            <Text style={styles.petEmoji}>{currentStage.emoji}</Text>
-            <Text style={styles.petName}>{DEMO_PET.name}</Text>
-            <Text style={styles.petStage}>{currentStage.name}</Text>
-          </View>
-
-          {/* Hype progress */}
-          <View style={styles.hypeSection}>
-            <View style={styles.hypeHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="trending-up" size={14} color={Colors.jade} />
-                <Text style={styles.hypeLabel}>ХАЙП — прогресс к эволюции</Text>
-              </View>
-              <Text style={styles.hypeValue}>{hype}%</Text>
-            </View>
-            <View style={styles.hypeTrack}>
-              <View style={[styles.hypeFill, { width: `${hype}%` as any }]} />
-              {/* Milestone marks */}
-              {[25, 50, 75].map((m) => (
-                <View
-                  key={m}
-                  style={[styles.hypeMark, { left: `${m}%` as any }]}
-                />
-              ))}
-            </View>
-            {nextStage && (
-              <Text style={styles.hypeHint}>
-                До эволюции в «{nextStage.name}» {nextStage.emoji}: {100 - hype}%
-              </Text>
-            )}
-          </View>
-        </Card>
-
-        {/* Stat bars */}
-        <Card style={styles.statsCard}>
-          <Text style={styles.sectionLabel}>СОСТОЯНИЕ</Text>
-          <StatBar label="Сытость" value={hunger} color={Colors.gold} />
-          <StatBar label="Настроение" value={mood} color={Colors.pink} />
-          <StatBar label="Энергия" value={energy} color={Colors.sky} />
-        </Card>
-
-        {/* Actions */}
-        <Text style={styles.sectionLabel}>ДЕЙСТВИЯ</Text>
-        <View style={styles.actionsGrid}>
-          <TouchableOpacity style={[styles.actionCard, { borderColor: Colors.gold }]} onPress={feed}>
-            <View style={[styles.actionIcon, { backgroundColor: Colors.goldDim }]}>
-              <Text style={styles.actionEmoji}>🍖</Text>
-            </View>
-            <Text style={styles.actionName}>Покормить</Text>
-            <View style={styles.actionCost}>
-              <Ionicons name="logo-bitcoin" size={10} color={Colors.gold} />
-              <Text style={[styles.actionCostText, { color: Colors.gold }]}>
-                −{Economy.petFeedCostBase}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.actionCard, { borderColor: Colors.pink }]} onPress={play}>
-            <View style={[styles.actionIcon, { backgroundColor: Colors.pinkDim }]}>
-              <Text style={styles.actionEmoji}>🎮</Text>
-            </View>
-            <Text style={styles.actionName}>Поиграть</Text>
-            <Text style={styles.actionCostText}>Бесплатно</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.actionCard, { borderColor: Colors.sky }]} onPress={walk}>
-            <View style={[styles.actionIcon, { backgroundColor: Colors.skyDim }]}>
-              <Text style={styles.actionEmoji}>🚶</Text>
-            </View>
-            <Text style={styles.actionName}>Выгулять</Text>
-            <Text style={styles.actionCostText}>Бесплатно</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.actionCard, { borderColor: Colors.violet }]}>
-            <View style={[styles.actionIcon, { backgroundColor: Colors.violetDim }]}>
-              <Text style={styles.actionEmoji}>💤</Text>
-            </View>
-            <Text style={styles.actionName}>Спать</Text>
-            <Text style={styles.actionCostText}>Восст.</Text>
-          </TouchableOpacity>
+          <ActionCard
+            emoji="🚶" label="Выгулять" sub="+28 энергия"
+            accent={Colors.sky} onPress={walk}
+          />
+          <ActionCard
+            emoji="💤" label="Спать" sub="+40 энергия"
+            accent={Colors.violet} onPress={sleep}
+          />
+          <ActionCard
+            emoji="🪞" label="Флекс" sub="показать всем"
+            accent={Colors.gold} onPress={() => blobRef.current?.triggerHypeBurst()}
+          />
         </View>
 
-        {/* Hype tip */}
-        <Card style={styles.tipCard}>
-          <Ionicons name="information-circle-outline" size={18} color={Colors.jade} />
+        {/* ── Info tip ── */}
+        <View style={styles.tip}>
+          <Ionicons name="flash-outline" size={14} color={Colors.lime} />
           <Text style={styles.tipText}>
-            Хайп растёт когда ты выполняешь движи. Каждый XP = +{Economy.hypePerQuestXp * 100}% хайпа Жорику.
+            Выполняй движи — каждый XP даёт {Economy.hypePerQuestXp * 100}% хайпа Жорику автоматически.
           </Text>
-        </Card>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: Spacing.md, paddingBottom: Spacing.xxl },
+// ── Action card component ──────────────────────────────────────────────────────
+function ActionCard({
+  emoji, label, sub, accent, onPress,
+}: {
+  emoji: string; label: string; sub: string; accent: string; onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.actionCard, { borderColor: accent + '55' }]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
+      <View style={[styles.actionIcon, { backgroundColor: accent + '18' }]}>
+        <Text style={styles.actionEmoji}>{emoji}</Text>
+      </View>
+      <Text style={styles.actionLabel}>{label}</Text>
+      <Text style={styles.actionSub}>{sub}</Text>
+    </TouchableOpacity>
+  );
+}
 
-  header: {
+// ── Styles ────────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  safe:  { flex: 1, backgroundColor: Colors.background },
+  scroll: { flex: 1 },
+  scrollContent: {
+    padding: Spacing.md,
+    paddingBottom: Spacing.xxl,
+    gap: Spacing.md,
+  },
+
+  topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
+    alignItems: 'flex-start',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: 4,
   },
-  title: {
+  screenTitle: {
     fontFamily: Fonts.bold,
     fontSize: FontSize.xxl,
     color: Colors.text,
     letterSpacing: 3,
   },
+  stageName: {
+    fontFamily: Fonts.mono,
+    fontSize: FontSize.xs,
+    color: Colors.jade,
+    letterSpacing: 1,
+    marginTop: 1,
+  },
+  topRight: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   levelPill: {
     backgroundColor: Colors.jadeDim,
     borderRadius: Radius.full,
@@ -187,96 +276,145 @@ const styles = StyleSheet.create({
   },
   levelText: {
     fontFamily: Fonts.monoBold,
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xs,
     color: Colors.jade,
   },
-
-  petCard: {
+  coinPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.md,
-    overflow: 'hidden',
-    paddingVertical: Spacing.xl,
+    gap: 4,
+    backgroundColor: Colors.goldDim,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.gold,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  petBody: { alignItems: 'center', marginBottom: Spacing.lg },
-  petEmoji: { fontSize: 80, marginBottom: Spacing.sm },
-  petName: {
-    fontFamily: Fonts.bold,
-    fontSize: FontSize.xl,
-    color: Colors.text,
-    letterSpacing: 1,
-  },
-  petStage: {
-    fontFamily: Fonts.mono,
-    fontSize: FontSize.sm,
-    color: Colors.jade,
-    letterSpacing: 1,
-    marginTop: 2,
+  coinText: {
+    fontFamily: Fonts.monoBold,
+    fontSize: FontSize.xs,
+    color: Colors.gold,
   },
 
-  hypeSection: { width: '100%' },
+  // Blob arena
+  arena: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  tapHint: {
+    fontFamily: Fonts.mono,
+    fontSize: FontSize.xs,
+    color: Colors.textDisabled,
+    letterSpacing: 1,
+    marginTop: 4,
+  },
+
+  // Hype bar
+  hypeSection: { gap: 6 },
   hypeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
   hypeLabel: {
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.semiBold,
     fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
+    letterSpacing: 2,
   },
-  hypeValue: {
+  hypePct: {
     fontFamily: Fonts.monoBold,
-    fontSize: FontSize.md,
-    color: Colors.jade,
+    fontSize: FontSize.lg,
   },
   hypeTrack: {
     height: 10,
-    backgroundColor: Colors.surface3,
+    backgroundColor: Colors.surface2,
     borderRadius: Radius.full,
     overflow: 'hidden',
     position: 'relative',
   },
   hypeFill: {
     height: '100%',
-    backgroundColor: Colors.jade,
     borderRadius: Radius.full,
-    shadowColor: Colors.jade,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 6,
   },
-  hypeMark: {
+  hypeTick: {
     position: 'absolute',
     top: 2,
     bottom: 2,
     width: 1,
     backgroundColor: Colors.background,
-    opacity: 0.4,
+    opacity: 0.5,
   },
   hypeHint: {
     fontFamily: Fonts.regular,
     fontSize: FontSize.xs,
     color: Colors.textMuted,
-    marginTop: 6,
-    textAlign: 'center',
   },
 
-  statsCard: { marginBottom: Spacing.md },
-  sectionLabel: {
-    fontFamily: Fonts.semiBold,
+  // Stats
+  statsCard: {
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    gap: 2,
+  },
+
+  // Feed hype button
+  feedBtn: {
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
+    shadowColor: Colors.violet,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  feedBtnDisabled: { opacity: 0.45 },
+  feedGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+  },
+  feedEmoji: { fontSize: 26 },
+  feedTitle: {
+    fontFamily: Fonts.bold,
+    fontSize: FontSize.md,
+    color: Colors.background,
+    letterSpacing: 1,
+  },
+  feedSub: {
+    fontFamily: Fonts.regular,
     fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 2,
-    marginBottom: Spacing.sm,
+    color: 'rgba(10,10,20,0.65)',
+    marginTop: 1,
+  },
+  feedCost: {
+    marginLeft: 'auto' as any,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  feedCostText: {
+    fontFamily: Fonts.monoBold,
+    fontSize: FontSize.sm,
+    color: Colors.background,
   },
 
-  actionsGrid: {
+  // Action grid
+  actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.sm,
-    marginBottom: Spacing.md,
   },
   actionCard: {
     width: '47.5%',
@@ -295,29 +433,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionEmoji: { fontSize: 26 },
-  actionName: {
+  actionLabel: {
     fontFamily: Fonts.semiBold,
     fontSize: FontSize.md,
     color: Colors.text,
   },
-  actionCost: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  actionCostText: {
-    fontFamily: Fonts.mono,
+  actionSub: {
+    fontFamily: Fonts.regular,
     fontSize: FontSize.xs,
     color: Colors.textMuted,
   },
 
-  tipCard: {
+  // Tip
+  tip: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-    borderColor: Colors.jadeDim,
+    gap: 8,
     alignItems: 'flex-start',
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.limeDim,
+    padding: Spacing.md,
   },
   tipText: {
     flex: 1,
     fontFamily: Fonts.regular,
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
-    lineHeight: 18,
+    lineHeight: 17,
   },
 });
