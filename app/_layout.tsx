@@ -12,7 +12,6 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
-import { SmearBackground } from '@/components/SmearBackground';
 import { Colors } from '@/constants/tokens';
 
 SplashScreen.preventAutoHideAsync();
@@ -35,22 +34,18 @@ export default function RootLayout() {
 
   if (!loaded && !error) return null;
 
-  // Transparent navigator so the smeared-creature background shows through
   const scene = (
     <View style={styles.scene}>
-      <SmearBackground />
-      <View style={styles.navLayer}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: 'none',
-            contentStyle: { backgroundColor: 'transparent' },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-      </View>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
     </View>
   );
 
@@ -70,7 +65,6 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   scene: { flex: 1, backgroundColor: Colors.background },
-  navLayer: { ...StyleSheet.absoluteFillObject },
   webOuter: {
     flex: 1,
     backgroundColor: '#050507',
@@ -79,7 +73,7 @@ const styles = StyleSheet.create({
   },
   webPhone: {
     width: 390,
-    // @ts-ignore — web-only CSS property
+    // @ts-ignore
     height: '100vh',
     maxHeight: 844,
     backgroundColor: Colors.background,
