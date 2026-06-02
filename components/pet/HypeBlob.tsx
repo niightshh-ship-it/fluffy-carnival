@@ -5,22 +5,92 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from 'react';
-import { Animated, View, PanResponder, StyleSheet } from 'react-native';
+import { Animated as RNAnimated, View, PanResponder, StyleSheet } from 'react-native';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useFrameCallback,
+  withRepeat,
+  withTiming,
+  withSpring,
+  withSequence,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
+import Svg, { Path, Ellipse, Circle, G, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { Colors } from '@/constants/tokens';
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-const SIZE = 170;
-const PARTICLE_COUNT = 14;
-const PARTICLE_COLORS = [Colors.lime, Colors.pink, Colors.gold, Colors.violet, Colors.sky];
+const AnimatedPath    = Reanimated.createAnimatedComponent(Path);
+const AnimatedEllipse = Reanimated.createAnimatedComponent(Ellipse);
+const AnimatedG       = Reanimated.createAnimatedComponent(G);
 
-// Extreme blob shapes — more organic/gooey, 28–82 range
-const SHAPES = [
-  [72, 28, 62, 38],
-  [32, 78, 32, 68],
-  [62, 38, 78, 28],
-  [28, 68, 42, 82],
-  [68, 42, 35, 72],
-];
+// ─── Geometry (SVG viewBox space) ───────────────────────────────────────────
+const VB = 240;          // viewBox is 0 0 240 270
+const VB_H = 270;
+const CX = 120;
+const CY = 132;
+const BODY_R = 72;
+const RENDER = 250;      // px size the Svg is drawn at
+
+// ─── Morph noise tables (deterministic, captured by worklet) ────────────────
+const VERT = 11;
+const F1: number[] = [];
+const F2: number[] = [];
+const P1: number[] = [];
+const P2: number[] = [];
+const AMP: number[] = [];
+for (let i = 0; i < VERT; i++) {
+  F1.push(0.55 + (i % 4) * 0.17);
+  F2.push(0.33 + (i % 3) * 0.13);
+  P1.push(i * 1.7);
+  P2.push(i * 0.9 + 1.1);
+  AMP.push(0.55 + ((i * 37) % 100) / 100 * 0.7); // 0.55 … 1.25
+}
+
+// Smooth closed liquid path through morphing vertices (Catmull-Rom → Bézier)
+function blobPath(cx: number, cy: number, baseR: number, t: number, amp: number) {
+  'worklet';
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < VERT; i++) {
+    const a = (i / VERT) * Math.PI * 2;
+    const n =
+      Math.sin(t * F1[i] + P1[i]) * 0.6 +
+      Math.sin(t * F2[i] + P2[i]) * 0.4;
+    const r = baseR * (1 + amp * AMP[i] * n);
+    xs.push(cx + Math.cos(a) * r);
+    ys.push(cy + Math.sin(a) * r);
+  }
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  let d = `M${r2(xs[0])},${r2(ys[0])}`;
+  for (let i = 0; i < VERT; i++) {
+    const i0 = (i - 1 + VERT) % VERT;
+    const i1 = i;
+    const i2 = (i + 1) % VERT;
+    const i3 = (i + 2) % VERT;
+    const c1x = xs[i1] + (xs[i2] - xs[i0]) / 6;
+    const c1y = ys[i1] + (ys[i2] - ys[i0]) / 6;
+    const c2x = xs[i2] - (xs[i3] - xs[i1]) / 6;
+    const c2y = ys[i2] - (ys[i3] - ys[i1]) / 6;
+    d += `C${r2(c1x)},${r2(c1y)} ${r2(c2x)},${r2(c2y)} ${r2(xs[i2])},${r2(ys[i2])}`;
+  }
+  return d + 'Z';
+}
+
+// ─── Hype → palette ─────────────────────────────────────────────────────────
+function paletteForHype(h: number) {
+  // [core, mid, rim] stops + glow
+  if (h < 25)  return { core: '#5a2db0', mid: '#34177a', rim: '#150a2e', glow: 'rgba(90,45,176,0.55)',  shadow: Colors.violet };
+  if (h < 50)  return { core: '#b94fd0', mid: '#7a2da8', rim: '#2a0f55', glow: 'rgba(150,55,170,0.55)', shadow: Colors.violet };
+  if (h < 75)  return { core: '#ff5fa6', mid: '#c0307e', rim: '#48103f', glow: 'rgba(220,55,140,0.6)',  shadow: Colors.pink };
+  if (h < 100) return { core: '#ff9ad0', mid: '#e84d9a', rim: '#5a2050', glow: 'rgba(255,90,160,0.6)',  shadow: Colors.pink };
+  return         { core: '#e8ff8a', mid: '#a0d828', rim: '#3a5810', glow: 'rgba(180,230,50,0.65)',  shadow: Colors.lime };
+}
+
+// ─── Particles (RN Animated overlay) ────────────────────────────────────────
+const PARTICLE_COUNT = 16;
+const PARTICLE_COLORS = [Colors.lime, Colors.pink, Colors.gold, Colors.violet, Colors.sky];
 
 export interface HypeBlobRef {
   triggerHypeBurst: () => void;
@@ -31,525 +101,288 @@ interface Props {
   hunger: number;
   mood: number;
   onTap?: () => void;
-  /** Scale the whole blob — used by pet screen entrance anim */
-  entranceScale?: Animated.Value;
 }
 
-function hypeToShadowColor(hype: number) {
-  if (hype < 30) return Colors.violet;
-  if (hype < 65) return Colors.pink;
-  return Colors.lime;
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
 export const HypeBlob = forwardRef<HypeBlobRef, Props>(
-  ({ hype, hunger, mood, onTap, entranceScale }, ref) => {
-    // Idle
-    const breathe  = useRef(new Animated.Value(0)).current;
-    const morph    = useRef(new Animated.Value(0)).current;
-    const sway     = useRef(new Animated.Value(0)).current;
-    const blinkL   = useRef(new Animated.Value(1)).current;
-    const blinkR   = useRef(new Animated.Value(1)).current;
-    const ant1     = useRef(new Animated.Value(0)).current;
-    const ant2     = useRef(new Animated.Value(0)).current;
-    // Drip idle oscillation
-    const drip     = useRef(new Animated.Value(0)).current;
+  ({ hype, hunger, mood, onTap }, ref) => {
+    const pal = paletteForHype(hype);
 
-    // Interaction
-    const squishX    = useRef(new Animated.Value(1)).current;
-    const squishY    = useRef(new Animated.Value(1)).current;
-    const burstScale = useRef(new Animated.Value(1)).current;
-    const dragX      = useRef(new Animated.Value(0)).current;
-    const dragY      = useRef(new Animated.Value(0)).current;
-    const eyeWide    = useRef(new Animated.Value(1)).current;
-    // Secondary wobble after tap (viscous aftershock)
-    const wobble     = useRef(new Animated.Value(0)).current;
+    // ── Reanimated shared values ──
+    const clock   = useSharedValue(0);
+    const breathe = useSharedValue(0);   // 0..1 yoyo
+    const sway    = useSharedValue(0);   // -1..1
+    const drip    = useSharedValue(0);   // 0..1
+    const ant1    = useSharedValue(0);   // -1..1
+    const ant2    = useSharedValue(0);
+    const blinkL  = useSharedValue(1);
+    const blinkR  = useSharedValue(1);
 
-    // Hype color (JS driver)
-    const hypeAnim = useRef(new Animated.Value(hype)).current;
+    const squishX = useSharedValue(1);
+    const squishY = useSharedValue(1);
+    const burst   = useSharedValue(1);
+    const dragX   = useSharedValue(0);
+    const dragY   = useSharedValue(0);
+    const eyeWide = useSharedValue(1);
+
+    // Continuous organic clock
+    useFrameCallback((info) => {
+      const dt = (info.timeSincePreviousFrame ?? 16) / 1000;
+      clock.value += dt * 1.15;
+    });
+
+    // Idle loops
     useEffect(() => {
-      Animated.timing(hypeAnim, { toValue: hype, duration: 700, useNativeDriver: false }).start();
-    }, [hype]);
-
-    // Particles
-    const particles = useRef(
-      Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
-        x:       new Animated.Value(0),
-        y:       new Animated.Value(0),
-        opacity: new Animated.Value(0),
-        scale:   new Animated.Value(0),
-        color:   PARTICLE_COLORS[i % PARTICLE_COLORS.length],
-        size:    6 + (i % 4) * 3,
-      }))
-    ).current;
-
-    // ── Idle loops ────────────────────────────────────────────────────────────
-    useEffect(() => {
-      // Breathing — asymmetric timing feels more organic
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(breathe, { toValue: 1, duration: 1800, useNativeDriver: true }),
-          Animated.timing(breathe, { toValue: 0, duration: 2400, useNativeDriver: true }),
-        ])
-      ).start();
-
-      // Shape morph — 5 shapes, slow cycle
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(morph, { toValue: 1, duration: 2600, useNativeDriver: false }),
-          Animated.timing(morph, { toValue: 2, duration: 3100, useNativeDriver: false }),
-          Animated.timing(morph, { toValue: 3, duration: 2400, useNativeDriver: false }),
-          Animated.timing(morph, { toValue: 4, duration: 2900, useNativeDriver: false }),
-          Animated.timing(morph, { toValue: 0, duration: 2700, useNativeDriver: false }),
-        ])
-      ).start();
-
-      // Sway — heavy, slow
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(sway, { toValue: 1,  duration: 3200, useNativeDriver: true }),
-          Animated.timing(sway, { toValue: -1, duration: 3200, useNativeDriver: true }),
-        ])
-      ).start();
-
-      // Drip oscillation
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(drip, { toValue: 1,  duration: 1400, useNativeDriver: false }),
-          Animated.timing(drip, { toValue: -1, duration: 1800, useNativeDriver: false }),
-        ])
-      ).start();
-
-      // Antennae
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(ant1, { toValue: 1,  duration: 700, useNativeDriver: true }),
-          Animated.timing(ant1, { toValue: -1, duration: 700, useNativeDriver: true }),
-        ])
-      ).start();
-      const t = setTimeout(() => {
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(ant2, { toValue: -1, duration: 560, useNativeDriver: true }),
-            Animated.timing(ant2, { toValue: 1,  duration: 560, useNativeDriver: true }),
-          ])
-        ).start();
-      }, 320);
-      return () => clearTimeout(t);
+      breathe.value = withRepeat(withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }), -1, true);
+      sway.value    = withRepeat(withTiming(1, { duration: 3200, easing: Easing.inOut(Easing.sin) }), -1, true);
+      drip.value    = withRepeat(withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.quad) }), -1, true);
+      ant1.value    = withRepeat(withTiming(1, { duration: 700,  easing: Easing.inOut(Easing.sin) }), -1, true);
+      ant2.value    = withDelay(300, withRepeat(withTiming(1, { duration: 560, easing: Easing.inOut(Easing.sin) }), -1, true));
     }, []);
 
-    // Blink loops
+    // Blink — independent randomised timers
     useEffect(() => {
       let tL: ReturnType<typeof setTimeout>;
       let tR: ReturnType<typeof setTimeout>;
       const doL = () => {
-        Animated.sequence([
-          Animated.timing(blinkL, { toValue: 0.04, duration: 60, useNativeDriver: true }),
-          Animated.timing(blinkL, { toValue: 1,    duration: 85, useNativeDriver: true }),
-        ]).start();
-        tL = setTimeout(doL, 2000 + Math.random() * 4000);
+        blinkL.value = withSequence(withTiming(0.06, { duration: 60 }), withTiming(1, { duration: 90 }));
+        tL = setTimeout(doL, 2000 + Math.random() * 4200);
       };
       const doR = () => {
-        Animated.sequence([
-          Animated.timing(blinkR, { toValue: 0.04, duration: 70, useNativeDriver: true }),
-          Animated.timing(blinkR, { toValue: 1,    duration: 95, useNativeDriver: true }),
-        ]).start();
-        tR = setTimeout(doR, 3200 + Math.random() * 3800);
+        blinkR.value = withSequence(withTiming(0.06, { duration: 70 }), withTiming(1, { duration: 100 }));
+        tR = setTimeout(doR, 3000 + Math.random() * 4000);
       };
-      tL = setTimeout(doL, 900);
-      tR = setTimeout(doR, 2200);
+      tL = setTimeout(doL, 1000);
+      tR = setTimeout(doR, 2400);
       return () => { clearTimeout(tL); clearTimeout(tR); };
     }, []);
 
-    // ── Tap: squish + viscous aftershock ────────────────────────────────────
+    // ── Particles ──
+    const particles = useRef(
+      Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+        x: new RNAnimated.Value(0),
+        y: new RNAnimated.Value(0),
+        opacity: new RNAnimated.Value(0),
+        scale: new RNAnimated.Value(0),
+        color: PARTICLE_COLORS[i % PARTICLE_COLORS.length],
+        size: 6 + (i % 4) * 3,
+      }))
+    ).current;
+
+    // ── Tap: viscous squish ──
     const handleTap = useCallback(() => {
-      Animated.sequence([
-        // Primary squish
-        Animated.parallel([
-          Animated.spring(squishX, { toValue: 1.35, speed: 80, bounciness: 0, useNativeDriver: true }),
-          Animated.spring(squishY, { toValue: 0.68, speed: 80, bounciness: 0, useNativeDriver: true }),
-          Animated.spring(eyeWide, { toValue: 1.55, speed: 70, useNativeDriver: true }),
-        ]),
-        // Settle back — heavy viscous spring (low bounciness)
-        Animated.parallel([
-          Animated.spring(squishX, { toValue: 1, speed: 4, bounciness: 6, useNativeDriver: true }),
-          Animated.spring(squishY, { toValue: 1, speed: 4, bounciness: 6, useNativeDriver: true }),
-          Animated.spring(eyeWide, { toValue: 1, speed: 8, useNativeDriver: true }),
-        ]),
-        // Viscous aftershock — tiny residual wobble
-        Animated.parallel([
-          Animated.spring(squishX, { toValue: 1.06, speed: 20, bounciness: 0, useNativeDriver: true }),
-          Animated.spring(squishY, { toValue: 0.95, speed: 20, bounciness: 0, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.spring(squishX, { toValue: 1, speed: 8, bounciness: 0, useNativeDriver: true }),
-          Animated.spring(squishY, { toValue: 1, speed: 8, bounciness: 0, useNativeDriver: true }),
-        ]),
-      ]).start();
+      squishX.value = withSequence(
+        withSpring(1.34, { stiffness: 600, damping: 14 }),
+        withSpring(1, { stiffness: 90, damping: 10 }),
+        withSpring(1.05, { stiffness: 200, damping: 18 }),
+        withSpring(1, { stiffness: 200, damping: 22 }),
+      );
+      squishY.value = withSequence(
+        withSpring(0.68, { stiffness: 600, damping: 14 }),
+        withSpring(1, { stiffness: 90, damping: 10 }),
+        withSpring(0.96, { stiffness: 200, damping: 18 }),
+        withSpring(1, { stiffness: 200, damping: 22 }),
+      );
+      eyeWide.value = withSequence(
+        withSpring(1.5, { stiffness: 500, damping: 12 }),
+        withSpring(1, { stiffness: 120, damping: 14 }),
+      );
       onTap?.();
     }, [onTap]);
 
-    // ── Hype burst ────────────────────────────────────────────────────────────
+    // ── Hype burst ──
     const triggerHypeBurst = useCallback(() => {
       particles.forEach((p, i) => {
         const angle = (i / PARTICLE_COUNT) * 2 * Math.PI + Math.random() * 0.7;
-        const dist  = 70 + Math.random() * 70;
+        const dist = 80 + Math.random() * 70;
         p.x.setValue(0); p.y.setValue(0);
         p.opacity.setValue(1); p.scale.setValue(2);
-        Animated.parallel([
-          Animated.timing(p.x,       { toValue: Math.cos(angle) * dist, duration: 850, useNativeDriver: true }),
-          Animated.timing(p.y,       { toValue: Math.sin(angle) * dist, duration: 850, useNativeDriver: true }),
-          Animated.timing(p.opacity, { toValue: 0,   duration: 850, useNativeDriver: true }),
-          Animated.timing(p.scale,   { toValue: 0.1, duration: 850, useNativeDriver: true }),
+        RNAnimated.parallel([
+          RNAnimated.timing(p.x,       { toValue: Math.cos(angle) * dist, duration: 880, useNativeDriver: true }),
+          RNAnimated.timing(p.y,       { toValue: Math.sin(angle) * dist, duration: 880, useNativeDriver: true }),
+          RNAnimated.timing(p.opacity, { toValue: 0,   duration: 880, useNativeDriver: true }),
+          RNAnimated.timing(p.scale,   { toValue: 0.1, duration: 880, useNativeDriver: true }),
         ]).start();
       });
-      // Blob expands — viscous settle (not super bouncy)
-      Animated.sequence([
-        Animated.spring(burstScale, { toValue: 1.55, speed: 60, bounciness: 0, useNativeDriver: true }),
-        Animated.spring(burstScale, { toValue: 1,    speed: 4,  bounciness: 10, useNativeDriver: true }),
-      ]).start();
-      Animated.sequence([
-        Animated.spring(eyeWide, { toValue: 1.9, speed: 60, useNativeDriver: true }),
-        Animated.delay(450),
-        Animated.spring(eyeWide, { toValue: 1,   speed: 6,  useNativeDriver: true }),
-      ]).start();
+      burst.value = withSequence(
+        withSpring(1.55, { stiffness: 500, damping: 13 }),
+        withSpring(1, { stiffness: 70, damping: 9 }),
+      );
+      eyeWide.value = withSequence(
+        withSpring(1.9, { stiffness: 400, damping: 11 }),
+        withDelay(420, withSpring(1, { stiffness: 80, damping: 12 })),
+      );
     }, []);
 
     useImperativeHandle(ref, () => ({ triggerHypeBurst }), [triggerHypeBurst]);
 
-    // ── Pan responder ─────────────────────────────────────────────────────────
+    // ── Drag / tap pan responder ──
     const panResponder = useRef(
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 2 || Math.abs(gs.dy) > 2,
         onPanResponderMove: (_, gs) => {
-          dragX.setValue(gs.dx * 0.42);
-          dragY.setValue(gs.dy * 0.35);
+          dragX.value = gs.dx * 0.42;
+          dragY.value = gs.dy * 0.35;
         },
         onPanResponderRelease: (_, gs) => {
           if (Math.abs(gs.dx) < 8 && Math.abs(gs.dy) < 8) handleTap();
-          // Viscous spring back — heavy fluid resistance
-          Animated.parallel([
-            Animated.spring(dragX, { toValue: 0, bounciness: 5, speed: 6, useNativeDriver: true }),
-            Animated.spring(dragY, { toValue: 0, bounciness: 5, speed: 6, useNativeDriver: true }),
-          ]).start();
+          dragX.value = withSpring(0, { stiffness: 120, damping: 12, mass: 1.4 });
+          dragY.value = withSpring(0, { stiffness: 120, damping: 12, mass: 1.4 });
         },
         onPanResponderTerminate: () => {
-          dragX.setValue(0); dragY.setValue(0);
+          dragX.value = withSpring(0, { stiffness: 120, damping: 12 });
+          dragY.value = withSpring(0, { stiffness: 120, damping: 12 });
         },
       })
     ).current;
 
-    // ── Derived values ────────────────────────────────────────────────────────
-    const breatheX = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
-    const breatheY = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] });
-    const rotateV  = sway.interpolate({ inputRange: [-1, 1], outputRange: ['-6deg', '6deg'] });
-    const ant1Rot  = ant1.interpolate({ inputRange: [-1, 1], outputRange: ['-26deg', '26deg'] });
-    const ant2Rot  = ant2.interpolate({ inputRange: [-1, 1], outputRange: ['22deg', '-22deg'] });
+    // ── Animated props ──
+    const bodyProps = useAnimatedProps(() => ({
+      d: blobPath(CX, CY, BODY_R, clock.value, 0.12),
+    }));
+    const innerProps = useAnimatedProps(() => ({
+      d: blobPath(CX, CY, BODY_R * 0.7, clock.value + 12, 0.16),
+    }));
+    const ant1Props = useAnimatedProps(() => ({
+      rotation: (ant1.value * 2 - 1) * 24,
+      originX: 104, originY: 70,
+    }));
+    const ant2Props = useAnimatedProps(() => ({
+      rotation: (ant2.value * 2 - 1) * -20,
+      originX: 138, originY: 72,
+    }));
 
-    // 5-shape morph
-    const tlr = morph.interpolate({ inputRange: [0,1,2,3,4], outputRange: SHAPES.map(s => s[0]) });
-    const trr = morph.interpolate({ inputRange: [0,1,2,3,4], outputRange: SHAPES.map(s => s[1]) });
-    const brr = morph.interpolate({ inputRange: [0,1,2,3,4], outputRange: SHAPES.map(s => s[2]) });
-    const blr = morph.interpolate({ inputRange: [0,1,2,3,4], outputRange: SHAPES.map(s => s[3]) });
+    // Eyes — look down slightly when mood/hunger is low
+    const droop = Math.max(0, (50 - Math.min(mood, hunger)) / 50) * 5; // 0..5px
+    const eyeLProps = useAnimatedProps(() => ({
+      ry: 21 * blinkL.value * eyeWide.value,
+      rx: 19 * eyeWide.value,
+    }));
+    const eyeRProps = useAnimatedProps(() => ({
+      ry: 13 * blinkR.value * eyeWide.value,
+      rx: 12 * eyeWide.value,
+    }));
 
-    // Drip shape
-    const dripH = drip.interpolate({ inputRange: [-1, 1], outputRange: [14, 32] });
-    const dripW = drip.interpolate({ inputRange: [-1, 1], outputRange: [20, 12] });
-    const dripBR = drip.interpolate({ inputRange: [-1, 1], outputRange: [12, 7] });
+    const dripProps = useAnimatedProps(() => ({
+      ry: 12 + drip.value * 16,
+      cy: 204 + drip.value * 6,
+      rx: 16 - drip.value * 5,
+    }));
 
-    // Color by hype
-    const blobBg = hypeAnim.interpolate({
-      inputRange:  [0,        20,        45,        70,        100],
-      outputRange: ['#180d2e','#3a1870', '#8030b0', '#d8358a', '#a0d828'],
-    });
-    const outerGlow = hypeAnim.interpolate({
-      inputRange:  [0,                       50,                          100],
-      outputRange: ['rgba(40,15,90,0.20)',   'rgba(180,45,125,0.26)',     'rgba(170,220,40,0.30)'],
-    });
-    const innerGlow = hypeAnim.interpolate({
-      inputRange:  [0,                       50,                          100],
-      outputRange: ['rgba(70,30,150,0.24)',  'rgba(215,55,140,0.34)',     'rgba(198,242,78,0.40)'],
-    });
-    // Inner depth layer — slightly lighter, translucent
-    const innerLayer = hypeAnim.interpolate({
-      inputRange:  [0,                        50,                          100],
-      outputRange: ['rgba(90,50,180,0.35)',  'rgba(240,80,160,0.30)',      'rgba(220,255,100,0.28)'],
-    });
-
-    const shadowColor = hypeToShadowColor(hype);
-
-    // Outer entrance scale (from pet screen)
-    const outerTransform = entranceScale
-      ? [{ scale: entranceScale }]
-      : undefined;
+    // Container transform (drag → burst → squish → breathe → sway)
+    const containerStyle = useAnimatedStyle(() => ({
+      transform: [
+        { translateX: dragX.value },
+        { translateY: dragY.value },
+        { scale: burst.value },
+        { scaleX: squishX.value * (1 + breathe.value * 0.06) },
+        { scaleY: squishY.value * (1 - breathe.value * 0.05) },
+        { rotate: `${(sway.value * 2 - 1) * 6}deg` },
+      ],
+    }));
 
     return (
-      <Animated.View style={[styles.root, outerTransform && { transform: outerTransform }]}>
-        {/* Atmospheric glow rings */}
-        <Animated.View style={[styles.glowOuter, { backgroundColor: outerGlow }]} />
-        <Animated.View style={[styles.glowInner, { backgroundColor: innerGlow }]} />
-
-        {/* Particles */}
+      <View style={styles.root}>
+        {/* Particle layer */}
         <View style={styles.particleLayer} pointerEvents="none">
           {particles.map((p, i) => (
-            <Animated.View
+            <RNAnimated.View
               key={i}
               style={[
                 styles.particle,
                 {
-                  width:  p.size, height: p.size, borderRadius: p.size / 2,
+                  width: p.size, height: p.size, borderRadius: p.size / 2,
                   backgroundColor: p.color,
                   shadowColor: p.color,
                   shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0.9, shadowRadius: 5,
-                  transform: [{ translateX: p.x }, { translateY: p.y }, { scale: p.scale }],
+                  shadowOpacity: 0.9, shadowRadius: 6,
                   opacity: p.opacity,
+                  transform: [{ translateX: p.x }, { translateY: p.y }, { scale: p.scale }],
                 },
               ]}
             />
           ))}
         </View>
 
-        {/* Drag */}
-        <Animated.View
-          style={{ transform: [{ translateX: dragX }, { translateY: dragY }] }}
-          {...panResponder.panHandlers}
-        >
-          {/* Burst scale */}
-          <Animated.View style={{ transform: [{ scale: burstScale }] }}>
-            {/* Squish */}
-            <Animated.View style={{ transform: [{ scaleX: squishX }, { scaleY: squishY }] }}>
-              {/* Breathe + sway */}
-              <Animated.View style={{ transform: [{ scaleX: breatheX }, { scaleY: breatheY }, { rotate: rotateV }] }}>
+        {/* The creature */}
+        <Reanimated.View style={containerStyle} {...panResponder.panHandlers}>
+          <Svg width={RENDER} height={RENDER * (VB_H / VB)} viewBox={`0 0 ${VB} ${VB_H}`}>
+            <Defs>
+              <RadialGradient id="body" cx="42%" cy="34%" r="75%">
+                <Stop offset="0%"   stopColor={pal.core} />
+                <Stop offset="55%"  stopColor={pal.mid} />
+                <Stop offset="100%" stopColor={pal.rim} />
+              </RadialGradient>
+              <RadialGradient id="glow" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%"   stopColor={pal.glow} />
+                <Stop offset="70%"  stopColor={pal.glow} stopOpacity={0.25} />
+                <Stop offset="100%" stopColor={pal.glow} stopOpacity={0} />
+              </RadialGradient>
+              <RadialGradient id="inner" cx="50%" cy="42%" r="60%">
+                <Stop offset="0%"   stopColor="#ffffff" stopOpacity={0.18} />
+                <Stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
 
-                {/* Antennae */}
-                <View style={styles.antRow}>
-                  <Animated.View style={[styles.antPivot, { transform: [{ rotate: ant1Rot }] }]}>
-                    <View style={styles.antStalk1} />
-                    <View style={styles.antBall1} />
-                  </Animated.View>
-                  <View style={{ width: 48 }} />
-                  <Animated.View style={[styles.antPivot, styles.antPivot2, { transform: [{ rotate: ant2Rot }] }]}>
-                    <View style={styles.antStalk2} />
-                    <View style={styles.antBall2} />
-                  </Animated.View>
-                </View>
+            {/* Atmospheric glow */}
+            <Ellipse cx={CX} cy={CY + 4} rx={118} ry={112} fill="url(#glow)" />
 
-                {/* Main blob */}
-                <Animated.View
-                  style={[
-                    styles.blob,
-                    {
-                      backgroundColor: blobBg,
-                      borderTopLeftRadius:     tlr,
-                      borderTopRightRadius:    trr,
-                      borderBottomRightRadius: brr,
-                      borderBottomLeftRadius:  blr,
-                      shadowColor,
-                    },
-                  ]}
-                >
-                  {/* Gloss */}
-                  <View style={styles.gloss} />
+            {/* Antennae (behind body) */}
+            <AnimatedG animatedProps={ant1Props}>
+              <Path d={`M104,70 Q100,48 101,36`} stroke="rgba(255,255,255,0.22)" strokeWidth={5} strokeLinecap="round" fill="none" />
+              <Circle cx={101} cy={33} r={7} fill={Colors.lime} opacity={0.95} />
+              <Circle cx={101} cy={33} r={11} fill={Colors.lime} opacity={0.18} />
+            </AnimatedG>
+            <AnimatedG animatedProps={ant2Props}>
+              <Path d={`M138,72 Q143,52 142,42`} stroke="rgba(255,255,255,0.18)" strokeWidth={4} strokeLinecap="round" fill="none" />
+              <Circle cx={142} cy={39} r={5.5} fill={Colors.pink} opacity={0.95} />
+              <Circle cx={142} cy={39} r={9} fill={Colors.pink} opacity={0.18} />
+            </AnimatedG>
 
-                  {/* Inner depth layer — translucent fluid volume */}
-                  <Animated.View style={[styles.innerLayer, { backgroundColor: innerLayer }]} />
+            {/* Drip (behind body bottom) */}
+            <AnimatedEllipse animatedProps={dripProps} cx={118} fill="url(#body)" opacity={0.92} />
 
-                  {/* Wart/protrusion */}
-                  <Animated.View style={[styles.bump, { backgroundColor: blobBg }]} />
+            {/* Main morphing body */}
+            <AnimatedPath animatedProps={bodyProps} fill="url(#body)" />
 
-                  {/* Eyes */}
-                  <View style={styles.eyeRow}>
-                    <Animated.View style={[styles.eye, styles.eyeL, { transform: [{ scaleY: blinkL }, { scale: eyeWide }] }]}>
-                      <View style={styles.pupilL} />
-                      <View style={styles.shine} />
-                    </Animated.View>
-                    <Animated.View style={[styles.eye, styles.eyeR, { transform: [{ scaleY: blinkR }, { scale: eyeWide }] }]}>
-                      <View style={styles.pupilR} />
-                      <View style={styles.shineSmall} />
-                    </Animated.View>
-                  </View>
+            {/* Inner depth layer */}
+            <AnimatedPath animatedProps={innerProps} fill="url(#inner)" />
 
-                  {/* Fangs */}
-                  <View style={styles.fangRow}>
-                    <View style={styles.fang} />
-                    <View style={[styles.fang, styles.fangShort]} />
-                  </View>
-                </Animated.View>
+            {/* Gloss highlight */}
+            <Ellipse cx={96} cy={98} rx={30} ry={15} fill="rgba(255,255,255,0.16)" rotation={-20} originX={96} originY={98} />
 
-                {/* Drip — liquid drop hanging from bottom */}
-                <View style={styles.dripWrap}>
-                  <Animated.View
-                    style={[
-                      styles.dripDrop,
-                      {
-                        backgroundColor: blobBg,
-                        width: dripW,
-                        height: dripH,
-                        borderRadius: dripBR,
-                        shadowColor,
-                      },
-                    ]}
-                  />
-                </View>
+            {/* Eyes — asymmetric */}
+            <AnimatedEllipse animatedProps={eyeLProps} cx={104} cy={122} fill="#f5f4ff" />
+            <Circle cx={106} cy={124 + droop} r={11} fill="#0a0a14" />
+            <Circle cx={110} cy={120 + droop} r={3.5} fill="rgba(255,255,255,0.95)" />
 
-              </Animated.View>
-            </Animated.View>
-          </Animated.View>
-        </Animated.View>
-      </Animated.View>
+            <AnimatedEllipse animatedProps={eyeRProps} cx={148} cy={130} fill="#f5f4ff" />
+            <Circle cx={149} cy={132 + droop} r={6.5} fill="#0a0a14" />
+            <Circle cx={151} cy={129 + droop} r={2.2} fill="rgba(255,255,255,0.9)" />
+
+            {/* Fangs */}
+            <Path d="M110,168 L116,168 L113,182 Z" fill="rgba(255,255,255,0.9)" />
+            <Path d="M122,170 L127,170 L124.5,180 Z" fill="rgba(255,255,255,0.82)" />
+          </Svg>
+        </Reanimated.View>
+      </View>
     );
   }
 );
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const GLOW_OUTER = SIZE + 90;
-const GLOW_INNER = SIZE + 40;
-const ANT_H = 34;
-const ANT_PIVOT_H = ANT_H * 2;
-
 const styles = StyleSheet.create({
   root: {
-    width:  SIZE + 90,
-    height: SIZE + 100 + ANT_H,
+    width: RENDER,
+    height: RENDER * (VB_H / VB),
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 18,
-  },
-  glowOuter: {
-    position: 'absolute',
-    bottom: 18,
-    width:  GLOW_OUTER, height: GLOW_OUTER,
-    borderRadius: GLOW_OUTER / 2,
-  },
-  glowInner: {
-    position: 'absolute',
-    bottom: 18,
-    width:  GLOW_INNER, height: GLOW_INNER,
-    borderRadius: GLOW_INNER / 2,
+    justifyContent: 'center',
   },
   particleLayer: {
     position: 'absolute',
-    bottom: 18 + SIZE / 2,
-    alignSelf: 'center',
+    top: RENDER * (VB_H / VB) * (CY / VB_H),
+    left: RENDER / 2,
     width: 0, height: 0,
+    zIndex: 5,
   },
   particle: { position: 'absolute' },
-
-  antRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    marginBottom: -4,
-    zIndex: 1,
-  },
-  antPivot: {
-    width: 6, height: ANT_PIVOT_H,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  antPivot2: { width: 5, height: ANT_PIVOT_H * 0.82 },
-  antStalk1: {
-    width: 5, height: ANT_H,
-    backgroundColor: 'rgba(255,255,255,0.20)',
-    borderRadius: 3,
-  },
-  antStalk2: {
-    width: 4, height: ANT_H * 0.72,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 3,
-  },
-  antBall1: {
-    position: 'absolute', top: -9,
-    width: 12, height: 12, borderRadius: 6,
-    backgroundColor: Colors.lime,
-    shadowColor: Colors.lime,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1, shadowRadius: 7,
-  },
-  antBall2: {
-    position: 'absolute', top: -7,
-    width: 9, height: 9, borderRadius: 5,
-    backgroundColor: Colors.pink,
-    shadowColor: Colors.pink,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1, shadowRadius: 5,
-  },
-
-  blob: {
-    width: SIZE, height: SIZE,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.55, shadowRadius: 28,
-    elevation: 16,
-  },
-  gloss: {
-    position: 'absolute', top: 14, left: 20,
-    width: SIZE * 0.42, height: SIZE * 0.20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 40,
-    transform: [{ rotate: '-18deg' }],
-  },
-  innerLayer: {
-    position: 'absolute',
-    top: SIZE * 0.15, left: SIZE * 0.12,
-    width: SIZE * 0.76, height: SIZE * 0.70,
-    borderRadius: SIZE * 0.3,
-  },
-  bump: {
-    position: 'absolute', top: -18, right: 22,
-    width: 52, height: 52, borderRadius: 26,
-    opacity: 0.72,
-  },
-
-  eyeRow: {
-    position: 'absolute',
-    top: SIZE * 0.30, left: SIZE * 0.15,
-    flexDirection: 'row',
-    alignItems: 'flex-start', gap: 16,
-  },
-  eye: {
-    backgroundColor: '#f5f4ff',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.28, shadowRadius: 3,
-  },
-  eyeL: { width: 42, height: 42, borderRadius: 21 },
-  eyeR: { width: 26, height: 26, borderRadius: 13, marginTop: 12 },
-  pupilL: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#09090f' },
-  pupilR: { width: 13, height: 13, borderRadius: 7,  backgroundColor: '#09090f' },
-  shine: {
-    position: 'absolute', top: 7, right: 7,
-    width: 9, height: 9, borderRadius: 5,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-  },
-  shineSmall: {
-    position: 'absolute', top: 4, right: 4,
-    width: 5, height: 5, borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-  },
-
-  fangRow: {
-    position: 'absolute',
-    bottom: SIZE * 0.11, left: SIZE * 0.30,
-    flexDirection: 'row', gap: 7,
-  },
-  fang: {
-    width: 0, height: 0,
-    borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 13,
-    borderLeftColor: 'transparent', borderRightColor: 'transparent',
-    borderTopColor: 'rgba(255,255,255,0.86)',
-  },
-  fangShort: { borderTopWidth: 9, marginTop: 4 },
-
-  // Liquid drip at the bottom
-  dripWrap: {
-    alignItems: 'center',
-    marginTop: -6,
-  },
-  dripDrop: {
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5, shadowRadius: 6,
-  },
 });

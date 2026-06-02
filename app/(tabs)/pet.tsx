@@ -105,21 +105,35 @@ export default function PetScreen() {
       </View>
 
       {/* Blob arena — fixed, not inside ScrollView */}
-      <Animated.View
-        style={[
-          styles.arena,
-          { opacity: entranceOpacity, transform: [{ scale: entranceScale }] },
-        ]}
-      >
-        <HypeBlob
-          ref={blobRef}
-          hype={hype}
-          hunger={hunger}
-          mood={mood}
-          onTap={() => setMood(m => Math.min(100, m + 3))}
-        />
-        <Text style={styles.tapHint}>тапай · тяни · корми хайпом</Text>
-      </Animated.View>
+      <View style={styles.arenaWrap}>
+        {/* Atmospheric scene backdrop */}
+        <View pointerEvents="none" style={styles.backdrop}>
+          <View style={[styles.haloRing, styles.halo1]} />
+          <View style={[styles.haloRing, styles.halo2]} />
+          <LinearGradient
+            colors={['transparent', 'rgba(95,227,176,0.06)', 'transparent']}
+            style={styles.horizon}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          />
+        </View>
+
+        <Animated.View
+          style={[
+            styles.arena,
+            { opacity: entranceOpacity, transform: [{ scale: entranceScale }] },
+          ]}
+        >
+          <HypeBlob
+            ref={blobRef}
+            hype={hype}
+            hunger={hunger}
+            mood={mood}
+            onTap={() => setMood(m => Math.min(100, m + 3))}
+          />
+          <Text style={styles.tapHint}>тапай · тяни · корми хайпом</Text>
+        </Animated.View>
+      </View>
 
       {/* Scrollable stats + actions */}
       <ScrollView
@@ -249,7 +263,32 @@ const styles = StyleSheet.create({
   },
   coinText: { fontFamily: Fonts.monoBold, fontSize: FontSize.xs, color: Colors.gold },
 
+  arenaWrap: { alignItems: 'center', justifyContent: 'center' },
   arena: { alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  haloRing: {
+    position: 'absolute',
+    borderRadius: 9999,
+    borderWidth: 1,
+  },
+  halo1: {
+    width: 230, height: 230,
+    borderColor: 'rgba(155,140,255,0.07)',
+  },
+  halo2: {
+    width: 300, height: 300,
+    borderColor: 'rgba(155,140,255,0.04)',
+  },
+  horizon: {
+    position: 'absolute',
+    bottom: 18,
+    width: '88%',
+    height: 1,
+  },
   tapHint: {
     fontFamily: Fonts.mono, fontSize: FontSize.xs,
     color: Colors.textDisabled, letterSpacing: 1, marginTop: 2,
