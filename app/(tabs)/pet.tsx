@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView,
 } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
+import { ScreenBg } from '@/components/ui/ScreenBg';
 import { TopBar } from '@/components/ui/TopBar';
 import { Toast } from '@/components/ui/Toast';
 import HypeMascot, { HypeMascotRef } from '@/components/pet/HypeMascot';
@@ -34,6 +35,7 @@ export default function PetScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenBg />
       <TopBar />
       <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.pet}>

@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Icon } from '@/components/ui/Icon';
+import { ScreenBg } from '@/components/ui/ScreenBg';
 import { TopBar } from '@/components/ui/TopBar';
 import { Toast } from '@/components/ui/Toast';
 import { useGame } from '@/context/GameContext';
@@ -19,6 +20,7 @@ export default function QuestScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenBg />
       <TopBar />
       <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Твой квест</Text>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
+import { ScreenBg } from '@/components/ui/ScreenBg';
 import { TopBar } from '@/components/ui/TopBar';
 import { useGame } from '@/context/GameContext';
 import { Colors, Fonts, FontSize, Radius } from '@/constants/tokens';
@@ -16,6 +17,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenBg />
       <TopBar />
       <View style={styles.content}>
         <View style={styles.header}>

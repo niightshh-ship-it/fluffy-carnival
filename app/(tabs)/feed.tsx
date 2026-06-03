@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Animated,
 } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
+import { ScreenBg } from '@/components/ui/ScreenBg';
 import { TopBar } from '@/components/ui/TopBar';
 import { Toast } from '@/components/ui/Toast';
 import { useGame } from '@/context/GameContext';
@@ -46,6 +47,7 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenBg />
       <TopBar />
       <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.feedTabs}>

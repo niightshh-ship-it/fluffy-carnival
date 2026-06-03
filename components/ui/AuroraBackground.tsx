@@ -28,11 +28,12 @@ const ORBS: OrbDef[] = [
   { color: Colors.hot,    size: 300, start: { x: 200,  y: 460 },  drift: { x: -80, y: -70 }, dur: 10000, opacity: 0.32 },
 ];
 
-function Orb({ def }: { def: OrbDef }) {
+function Orb({ def, active }: { def: OrbDef; active: boolean }) {
   const t = useRef(new Animated.Value(0)).current;
   const gradId = useRef(`orb-${Math.random().toString(36).slice(2)}`).current;
 
   useEffect(() => {
+    if (!active) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(t, { toValue: 1, duration: def.dur, useNativeDriver: true }),
@@ -41,7 +42,7 @@ function Orb({ def }: { def: OrbDef }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [t, def.dur]);
+  }, [t, def.dur, active]);
 
   const translateX = t.interpolate({ inputRange: [0, 1], outputRange: [0, def.drift.x] });
   const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, def.drift.y] });
@@ -74,11 +75,11 @@ function Orb({ def }: { def: OrbDef }) {
   );
 }
 
-export function AuroraBackground() {
+export function AuroraBackground({ active = true }: { active?: boolean }) {
   return (
     <View style={styles.root} pointerEvents="none">
       {ORBS.map((def, i) => (
-        <Orb key={i} def={def} />
+        <Orb key={i} def={def} active={active} />
       ))}
       {/* лёгкое затемнение сверху, чтобы фон оставался «лёгким» и контент читался */}
       <View style={styles.veil} />
