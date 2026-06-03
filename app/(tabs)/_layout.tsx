@@ -1,48 +1,42 @@
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { Icon, IconName } from '@/components/ui/Icon';
 import { Colors, Fonts, FontSize } from '@/constants/tokens';
 
-const TABS = [
-  { name: 'dvizh',      label: 'ДВИЖ',    icon: 'flash',   iconOff: 'flash-outline'   },
-  { name: 'feed',       label: 'ЛЕНТА',   icon: 'grid',    iconOff: 'grid-outline'    },
-  { name: 'pet',        label: 'ЖОРИК',   icon: 'planet',  iconOff: 'planet-outline'  },
-  { name: 'challenges', label: 'ВЫЗОВЫ',  icon: 'trophy',  iconOff: 'trophy-outline'  },
-  { name: 'profile',    label: 'ПРОФИЛЬ', icon: 'person',  iconOff: 'person-outline'  },
-] as const;
+const TABS: { name: string; label: string; icon: IconName }[] = [
+  { name: 'dvizh',      label: 'Квест',     icon: 'target' },
+  { name: 'feed',       label: 'Лента',     icon: 'feed'   },
+  { name: 'pet',        label: 'Хайпожор',  icon: 'pet'    },
+  { name: 'challenges', label: 'Вызовы',    icon: 'trophy' },
+  { name: 'profile',    label: 'Профиль',   icon: 'person' },
+];
 
 function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   return (
     <View style={styles.bar}>
-      <View style={styles.row}>
-        {state.routes.map((route, index) => {
-          const tab = TABS.find(t => t.name === route.name);
-          if (!tab) return null;
-          const focused = state.index === index;
+      {state.routes.map((route, index) => {
+        const tab = TABS.find(t => t.name === route.name);
+        if (!tab) return null;
+        const focused = state.index === index;
+        const color = focused ? Colors.cyan : Colors.textMuted;
 
-          return (
-            <TouchableOpacity
-              key={route.key}
-              style={styles.item}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate(route.name)}
-            >
-              <View style={[styles.pill, focused && styles.pillActive]} />
-              <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-                <Ionicons
-                  name={(focused ? tab.icon : tab.iconOff) as any}
-                  size={22}
-                  color={focused ? Colors.background : Colors.textMuted}
-                />
-              </View>
-              <Text style={[styles.label, focused && styles.labelActive]} numberOfLines={1}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+        return (
+          <TouchableOpacity
+            key={route.key}
+            style={styles.tab}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate(route.name)}
+          >
+            <View style={[styles.ico, focused && styles.icoActive]}>
+              <Icon name={tab.icon} size={24} color={color} />
+            </View>
+            <Text style={[styles.label, { color }]} numberOfLines={1}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -58,41 +52,26 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: 'rgba(20,22,31,0.95)',
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+    gap: 4,
+    backgroundColor: 'rgba(11,11,18,0.92)',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingBottom: Platform.OS === 'ios' ? 22 : 6,
-    paddingTop: 6,
-    paddingHorizontal: 2,
   },
-  row: { flexDirection: 'row', alignItems: 'flex-start' },
-  item: {
+  tab: {
     flex: 1,
     alignItems: 'center',
-    gap: 3,
-    paddingTop: 4,
-    minWidth: 0,
+    gap: 4,
+    paddingVertical: 6,
   },
-  pill: {
-    width: 4, height: 4, borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 1,
-  },
-  pillActive: { backgroundColor: Colors.lime },
-  iconWrap: {
-    width: 40, height: 32,
-    borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconWrapActive: { backgroundColor: Colors.lime },
+  ico: { transform: [{ translateY: 0 }] },
+  icoActive: { transform: [{ translateY: -1 }] },
   label: {
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.semiBold,
     fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 0.3,
-  },
-  labelActive: {
-    color: Colors.lime,
-    fontFamily: Fonts.bold,
+    letterSpacing: 0.2,
   },
 });

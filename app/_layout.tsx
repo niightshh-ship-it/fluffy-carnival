@@ -12,6 +12,7 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
+import { GameProvider } from '@/context/GameContext';
 import { Colors } from '@/constants/tokens';
 
 SplashScreen.preventAutoHideAsync();
@@ -36,16 +37,18 @@ export default function RootLayout() {
 
   const scene = (
     <View style={styles.scene}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: 'none',
-          contentStyle: { backgroundColor: 'transparent' },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
-      </Stack>
+      <GameProvider>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: 'none',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </GameProvider>
     </View>
   );
 
