@@ -1,7 +1,8 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Icon, IconName } from '@/components/ui/Icon';
+import { useAuth } from '@/context/AuthContext';
 import { Colors, Fonts, FontSize } from '@/constants/tokens';
 
 const TABS: { name: string; label: string; icon: IconName }[] = [
@@ -42,6 +43,11 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
 }
 
 export default function TabLayout() {
+  const { session, loading } = useAuth();
+
+  // Без сессии (или после выхода) — назад на экран входа.
+  if (!loading && !session) return <Redirect href="/(auth)/login" />;
+
   return (
     <Tabs
       tabBar={props => <CustomTabBar {...props} />}

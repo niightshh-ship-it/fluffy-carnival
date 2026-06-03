@@ -1,40 +1,52 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, {
+  createContext, useContext, useReducer, useEffect, useRef, ReactNode,
+} from 'react';
 import { QUESTS } from '@/constants/data';
+import { useAuth } from '@/context/AuthContext';
+import {
+  fetchProfile, saveProfile, rowToState, ProfileState,
+} from '@/lib/profile';
 
 export type QuestState = 'offer' | 'accepted' | 'done';
 export type PetReaction = 'fed' | 'evolve' | null;
 
 export interface GameState {
+  // --- синхронизируется с профилем в Supabase ---
   coins: number;
   hype: number;
   streak: number;
-  questIdx: number;
-  questState: QuestState;
   petStage: number;
   petHunger: number;
   petEvo: number;
+  // --- локальное состояние сессии ---
+  questIdx: number;
+  questState: QuestState;
   liked: Record<number, boolean>;
   hypeCounts: number[];
   toast: string | null;
   petReaction: PetReaction;
+  /** Профиль загружен из Supabase — можно начинать автосохранение. */
+  ready: boolean;
 }
 
 const initialState: GameState = {
-  coins: 340,
-  hype: 180,
-  streak: 7,
+  coins: 0,
+  hype: 0,
+  streak: 0,
+  petStage: 0,
+  petHunger: 50,
+  petEvo: 0,
   questIdx: 0,
   questState: 'offer',
-  petStage: 1,
-  petHunger: 54,
-  petEvo: 38,
   liked: {},
   hypeCounts: [1284, 842, 503, 376],
   toast: null,
   petReaction: null,
+  ready: false,
 };
 
 type Action =
+  | { type: 'HYDRATE'; profile: ProfileState }
   | { type: 'ACCEPT_QUEST' }
   | { type: 'COMPLETE_QUEST' }
   | { type: 'REROLL_QUEST' }
@@ -43,10 +55,17 @@ type Action =
   | { type: 'CLEAR_TOAST' }
   | { type: 'CLEAR_REACTION' }
   | { type: 'ADD_COINS'; n: number }
-  | { type: 'ADD_HYPE'; n: number };
+  | { type: 'ADD_HYPE'; n: number }
+  | { type: 'RESET' };
 
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
+    case 'HYDRATE':
+      return { ...state, ...action.profile, ready: true };
+
+    case 'RESET':
+      return { ...initialState };
+
     case 'ACCEPT_QUEST':
       return { ...state, questState: 'accepted' };
 
@@ -142,7 +161,46 @@ export interface GameContextValue extends GameState {
 const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [state, dispatch] = useReducer(reducer, initialState);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Загружаем профиль при входе / сбрасываем при выходе.
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      dispatch({ type: 'RESET' });
+      return;
+    }
+    fetchProfile(user.id).then((row) => {
+      if (cancelled) return;
+      if (row) dispatch({ type: 'HYDRATE', profile: rowToState(row) });
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Автосохранение игровых полей в Supabase (с задержкой, чтобы не спамить запросами).
+  useEffect(() => {
+    if (!user || !state.ready) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const snapshot: ProfileState = {
+      coins: state.coins,
+      hype: state.hype,
+      streak: state.streak,
+      petStage: state.petStage,
+      petHunger: state.petHunger,
+      petEvo: state.petEvo,
+    };
+    saveTimer.current = setTimeout(() => {
+      saveProfile(user.id, snapshot);
+    }, 800);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [
+    user, state.ready, state.coins, state.hype, state.streak,
+    state.petStage, state.petHunger, state.petEvo,
+  ]);
 
   const value: GameContextValue = {
     ...state,

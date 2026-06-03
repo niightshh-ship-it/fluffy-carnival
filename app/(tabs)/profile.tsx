@@ -1,13 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
 import { ScreenBg } from '@/components/ui/ScreenBg';
 import { TopBar } from '@/components/ui/TopBar';
 import { useGame } from '@/context/GameContext';
+import { useAuth } from '@/context/AuthContext';
 import { Colors, Fonts, FontSize, Radius } from '@/constants/tokens';
 
 export default function ProfileScreen() {
   const { coins, hype, streak } = useGame();
+  const { user, signOut } = useAuth();
+
+  const email = user?.email ?? '';
+  const handle = email ? email.split('@')[0] : 'двиган';
 
   const stats = [
     { v: coins, l: 'монет', color: Colors.coin },
@@ -24,8 +29,8 @@ export default function ProfileScreen() {
           <View style={styles.ava}>
             <Icon name="person" size={44} color={Colors.background} />
           </View>
-          <Text style={styles.name}>двиган</Text>
-          <Text style={styles.handle}>@dvizh_player</Text>
+          <Text style={styles.name}>{handle}</Text>
+          {!!email && <Text style={styles.handle}>{email}</Text>}
         </View>
 
         <View style={styles.statsRow}>
@@ -37,7 +42,11 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        <Text style={styles.soon}>Полный профиль скоро появится</Text>
+        <View style={styles.spacer} />
+
+        <TouchableOpacity style={styles.logout} activeOpacity={0.8} onPress={signOut}>
+          <Text style={styles.logoutTxt}>Выйти</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -66,5 +75,15 @@ const styles = StyleSheet.create({
   statV: { fontFamily: Fonts.monoBold, fontSize: 22 },
   statL: { fontFamily: Fonts.regular, fontSize: 11.5, color: Colors.textMuted, marginTop: 4 },
 
-  soon: { fontFamily: Fonts.regular, fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center', marginTop: 32 },
+  spacer: { flex: 1 },
+
+  logout: {
+    paddingVertical: 15,
+    borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.borderStrong,
+    backgroundColor: Colors.chipBg,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logoutTxt: { fontFamily: Fonts.bold, fontSize: FontSize.lg, color: Colors.hot },
 });
