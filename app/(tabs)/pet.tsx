@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { Icon } from '@/components/ui/Icon';
 import { ScreenBg } from '@/components/ui/ScreenBg';
 import { TopBar } from '@/components/ui/TopBar';
@@ -20,6 +21,7 @@ export default function PetScreen() {
   } = useGame();
   const info = PET_STAGES[petStage];
   const mascotRef = useRef<HypeMascotRef>(null);
+  const focused = useIsFocused();
 
   // Drive mascot reaction animation off game state (feed / evolve)
   useEffect(() => {
@@ -44,8 +46,14 @@ export default function PetScreen() {
           </View>
 
           <View style={styles.petStage}>
-            <View style={styles.petFloor} />
-            <HypeMascot ref={mascotRef} stage={petStage} color={STAGE_COLORS[petStage]} size={240} />
+            <HypeMascot
+              ref={mascotRef}
+              stage={petStage}
+              color={STAGE_COLORS[petStage]}
+              size={240}
+              hunger={petHunger}
+              active={focused}
+            />
           </View>
 
           <Text style={styles.petName}>{info.name}</Text>
@@ -118,11 +126,6 @@ const styles = StyleSheet.create({
   },
 
   petStage: { width: 240, height: 240, alignItems: 'center', justifyContent: 'center', marginVertical: 6 },
-  petFloor: {
-    position: 'absolute', bottom: 16,
-    width: 150, height: 24, borderRadius: 12,
-    backgroundColor: Colors.lime, opacity: 0.18,
-  },
 
   petName: { fontFamily: Fonts.display, fontSize: 28, color: Colors.text, marginTop: 2 },
   petMood: { fontFamily: Fonts.regular, fontSize: 13, color: Colors.textMuted, marginBottom: 16 },

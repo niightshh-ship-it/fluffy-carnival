@@ -1,16 +1,18 @@
 import React, {
-  forwardRef, useImperativeHandle, useRef, useEffect, useMemo, useState, useCallback,
+  forwardRef, useImperativeHandle, useRef, useEffect, useMemo, useCallback,
 } from 'react';
 import { Animated, Easing, PanResponder, StyleSheet, View } from 'react-native';
-import Svg, { Path, Ellipse, Circle, G, Line } from 'react-native-svg';
+import Svg, {
+  Path, Ellipse, Circle, G, Line, Defs, LinearGradient, RadialGradient, Stop,
+} from 'react-native-svg';
 import { Colors } from '@/constants/tokens';
 
 /* ============================================================
-   Хайпожорик — живой маскот.
-   - тело: статичный SVG-path (считается 1 раз на стадию → без лагов)
-   - глаза: отдельный слой View-ов → моргают и следят за пальцем (native driver)
-   - реагирует на ЛЮБОЕ касание: сквош, подпрыг, искры, довольный прищур
-   - idle: дыхание + лёгкий парящий float + случайные моргания + «оглядывается»
+   Хайпожорик — живой маскот (псевдо-3D в 2D).
+   Слои: свечение-аура · тень на полу · пузырьки · тело с объёмным
+   градиентом · глаза-Views (моргают, следят за пальцем).
+   Реагирует на любое касание; настроение зависит от сытости.
+   Всё на transform/opacity + native driver → плавно, без лагов.
    ============================================================ */
 
 export type HypeMascotRef = {
@@ -22,10 +24,26 @@ interface Props {
   stage: number;
   color?: string;
   size?: number;
+  hunger?: number;     // 0..100 — влияет на настроение
+  active?: boolean;    // пауза анимаций когда экран не виден
   onTap?: () => void;
 }
 
 const VIEWBOX = 220;
+
+/** Осветлить/затемнить hex-цвет на величину amt (-1..1). */
+function shade(hex: string, amt: number): string {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const num = parseInt(full, 16);
+  let r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  const t = amt < 0 ? 0 : 255;
+  const p = Math.abs(amt);
+  r = Math.round((t - r) * p) + r;
+  g = Math.round((t - g) * p) + g;
+  b = Math.round((t - b) * p) + b;
+  return `rgb(${r},${g},${b})`;
+}
 
 function blob(cx: number, cy: number, radii: number[], squash = 1): string {
   const n = radii.length;
@@ -77,27 +95,62 @@ interface ParticleNode {
   color: string; size: number;
 }
 
+/** Медленно всплывающий пузырёк-блик вокруг тела. */
+function Bubble({ left, size, delay, dur, color, active }: {
+  left: number; size: number; delay: number; dur: number; color: string; active: boolean;
+}) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!active) return;
+    const loop = Animated.loop(
+      Animated.timing(t, { toValue: 1, duration: dur, delay, easing: Easing.linear, useNativeDriver: true })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [t, dur, delay, active]);
+  const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [10, -95] });
+  const opacity = t.interpolate({ inputRange: [0, 0.15, 0.75, 1], outputRange: [0, 0.5, 0.4, 0] });
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', bottom: 60, left,
+        width: size, height: size, borderRadius: size / 2,
+        backgroundColor: color, opacity,
+        transform: [{ translateY }, { scale }],
+      }}
+    />
+  );
+}
+
 const HypeMascot = forwardRef<HypeMascotRef, Props>(
-  ({ stage, color = Colors.lime, size = 240, onTap }, ref) => {
+  ({ stage, color = Colors.lime, size = 240, hunger = 100, active = true, onTap }, ref) => {
     const s = STAGES[Math.max(0, Math.min(STAGES.length - 1, stage))];
     const scale = size / VIEWBOX;
+    const sad = hunger < 30;
+
+    const ids = useRef({
+      shade: `sh-${Math.random().toString(36).slice(2)}`,
+      glow: `gl-${Math.random().toString(36).slice(2)}`,
+    }).current;
 
     // --- body transform drivers (all native) ---
     const breath = useRef(new Animated.Value(0)).current;
     const float = useRef(new Animated.Value(0)).current;
     const reactX = useRef(new Animated.Value(1)).current;
     const reactY = useRef(new Animated.Value(1)).current;
-    const hop = useRef(new Animated.Value(0)).current;     // upward pop on tap
-    const rot = useRef(new Animated.Value(0)).current;     // wiggle
-    const leanX = useRef(new Animated.Value(0)).current;   // lean toward finger
+    const hop = useRef(new Animated.Value(0)).current;
+    const rot = useRef(new Animated.Value(0)).current;
+    const leanX = useRef(new Animated.Value(0)).current;
     const leanY = useRef(new Animated.Value(0)).current;
+    const glowA = useRef(new Animated.Value(0)).current;
 
     // --- eye drivers ---
-    const blink = useRef(new Animated.Value(1)).current;   // 1 open, 0 shut
-    const pupilX = useRef(new Animated.Value(0)).current;  // -1..1
-    const pupilY = useRef(new Animated.Value(0)).current;  // -1..1
-    const squint = useRef(new Animated.Value(0)).current;  // 0 normal, 1 happy squint
-
+    const blink = useRef(new Animated.Value(1)).current;
+    const pupilX = useRef(new Animated.Value(0)).current;
+    const pupilY = useRef(new Animated.Value(sad ? 0.4 : 0)).current;
+    const squint = useRef(new Animated.Value(0)).current;
     const draggingRef = useRef(false);
 
     // --- particles ---
@@ -124,19 +177,25 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
       });
     }, [particles]);
 
-    // --- idle loops: breathe + float ---
+    // --- idle loops: breathe + float + glow (slower when sad) ---
     useEffect(() => {
+      if (!active) return;
+      const bd = sad ? 2300 : 1600;
       const breathe = Animated.loop(Animated.sequence([
-        Animated.timing(breath, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(breath, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breath, { toValue: 1, duration: bd, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breath, { toValue: 0, duration: bd, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]));
       const floating = Animated.loop(Animated.sequence([
         Animated.timing(float, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         Animated.timing(float, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]));
-      breathe.start(); floating.start();
-      return () => { breathe.stop(); floating.stop(); };
-    }, [breath, float]);
+      const glow = Animated.loop(Animated.sequence([
+        Animated.timing(glowA, { toValue: 1, duration: 1900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(glowA, { toValue: 0, duration: 1900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]));
+      breathe.start(); floating.start(); glow.start();
+      return () => { breathe.stop(); floating.stop(); glow.stop(); };
+    }, [breath, float, glowA, sad, active]);
 
     // --- random blinking + idle glancing ---
     const doBlink = useCallback((double = false) => {
@@ -155,7 +214,9 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
     }, [blink]);
 
     useEffect(() => {
+      if (!active) return;
       let alive = true;
+      const restY = sad ? 0.4 : 0;
       const scheduleBlink = () => {
         const delay = 2400 + Math.random() * 2600;
         setTimeout(() => {
@@ -170,7 +231,7 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
           if (!alive) return;
           if (!draggingRef.current) {
             const gx = (Math.random() * 2 - 1) * 0.7;
-            const gy = (Math.random() * 2 - 1) * 0.5;
+            const gy = restY + (Math.random() * 2 - 1) * 0.4;
             Animated.parallel([
               Animated.spring(pupilX, { toValue: gx, useNativeDriver: true, friction: 6 }),
               Animated.spring(pupilY, { toValue: gy, useNativeDriver: true, friction: 6 }),
@@ -179,7 +240,7 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
                 if (draggingRef.current) return;
                 Animated.parallel([
                   Animated.spring(pupilX, { toValue: 0, useNativeDriver: true, friction: 6 }),
-                  Animated.spring(pupilY, { toValue: 0, useNativeDriver: true, friction: 6 }),
+                  Animated.spring(pupilY, { toValue: restY, useNativeDriver: true, friction: 6 }),
                 ]).start();
               }, 900);
             });
@@ -189,9 +250,9 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
       };
       scheduleBlink(); scheduleGlance();
       return () => { alive = false; };
-    }, [doBlink, pupilX, pupilY]);
+    }, [doBlink, pupilX, pupilY, sad, active]);
 
-    // --- happy tap reaction: squash + hop + wiggle + squint + double-blink + burst ---
+    // --- happy tap reaction ---
     const happyReact = useCallback(() => {
       reactX.stopAnimation(); reactY.stopAnimation(); hop.stopAnimation(); rot.stopAnimation();
       reactX.setValue(1); reactY.setValue(1);
@@ -248,7 +309,26 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
       },
     }), [happyReact, reactX, reactY, rot, burst]);
 
-    // --- touch handling: lean + pupil-track on drag, happyReact on tap ---
+    // --- touch handling ---
+    const updateTrack = useCallback((lx: number, ly: number) => {
+      const nx = Math.max(-1, Math.min(1, (lx - size / 2) / (size / 2)));
+      const ny = Math.max(-1, Math.min(1, (ly - size / 2) / (size / 2)));
+      pupilX.setValue(nx);
+      pupilY.setValue(ny);
+      leanX.setValue(nx * 10);
+      leanY.setValue(ny * 8);
+    }, [size, pupilX, pupilY, leanX, leanY]);
+
+    const springBack = useCallback(() => {
+      const restY = sad ? 0.4 : 0;
+      Animated.parallel([
+        Animated.spring(leanX, { toValue: 0, friction: 6, useNativeDriver: true }),
+        Animated.spring(leanY, { toValue: 0, friction: 6, useNativeDriver: true }),
+        Animated.spring(pupilX, { toValue: 0, friction: 6, useNativeDriver: true }),
+        Animated.spring(pupilY, { toValue: restY, friction: 6, useNativeDriver: true }),
+      ]).start();
+    }, [leanX, leanY, pupilX, pupilY, sad]);
+
     const panResponder = useMemo(
       () =>
         PanResponder.create({
@@ -256,23 +336,14 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
           onMoveShouldSetPanResponder: () => true,
           onPanResponderGrant: (e) => {
             draggingRef.current = true;
-            const { locationX, locationY } = e.nativeEvent;
-            updateTrack(locationX, locationY);
+            updateTrack(e.nativeEvent.locationX, e.nativeEvent.locationY);
           },
           onPanResponderMove: (e) => {
-            const { locationX, locationY } = e.nativeEvent;
-            updateTrack(locationX, locationY);
+            updateTrack(e.nativeEvent.locationX, e.nativeEvent.locationY);
           },
           onPanResponderRelease: (_e, gs) => {
             draggingRef.current = false;
-            // spring everything back to rest
-            Animated.parallel([
-              Animated.spring(leanX, { toValue: 0, friction: 6, useNativeDriver: true }),
-              Animated.spring(leanY, { toValue: 0, friction: 6, useNativeDriver: true }),
-              Animated.spring(pupilX, { toValue: 0, friction: 6, useNativeDriver: true }),
-              Animated.spring(pupilY, { toValue: 0, friction: 6, useNativeDriver: true }),
-            ]).start();
-            // a small move counts as a tap
+            springBack();
             if (Math.abs(gs.dx) < 12 && Math.abs(gs.dy) < 12) {
               happyReact();
               onTap?.();
@@ -280,31 +351,16 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
           },
           onPanResponderTerminate: () => {
             draggingRef.current = false;
-            Animated.parallel([
-              Animated.spring(leanX, { toValue: 0, friction: 6, useNativeDriver: true }),
-              Animated.spring(leanY, { toValue: 0, friction: 6, useNativeDriver: true }),
-              Animated.spring(pupilX, { toValue: 0, friction: 6, useNativeDriver: true }),
-              Animated.spring(pupilY, { toValue: 0, friction: 6, useNativeDriver: true }),
-            ]).start();
+            springBack();
           },
         }),
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [happyReact, onTap]
+      [happyReact, onTap, updateTrack, springBack]
     );
 
-    const updateTrack = (lx: number, ly: number) => {
-      const nx = Math.max(-1, Math.min(1, (lx - size / 2) / (size / 2)));
-      const ny = Math.max(-1, Math.min(1, (ly - size / 2) / (size / 2)));
-      pupilX.setValue(nx);
-      pupilY.setValue(ny);
-      leanX.setValue(nx * 10);
-      leanY.setValue(ny * 8);
-    };
-
     // --- interpolations ---
-    const breathScaleX = breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] });
-    const breathScaleY = breath.interpolate({ inputRange: [0, 1], outputRange: [1, 0.955] });
-    const floatY = float.interpolate({ inputRange: [0, 1], outputRange: [3, -7] });
+    const breathScaleX = breath.interpolate({ inputRange: [0, 1], outputRange: [1, sad ? 1.02 : 1.045] });
+    const breathScaleY = breath.interpolate({ inputRange: [0, 1], outputRange: [1, sad ? 0.985 : 0.955] });
+    const floatY = float.interpolate({ inputRange: [0, 1], outputRange: [3, sad ? -2 : -7] });
     const hopY = hop.interpolate({ inputRange: [0, 1], outputRange: [0, -26] });
     const rotate = rot.interpolate({ inputRange: [-1, 1], outputRange: ['-9deg', '9deg'] });
 
@@ -316,15 +372,64 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
       { rotate },
     ];
 
+    const glowOpacity = glowA.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.5] });
+    const glowScale = glowA.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
+
+    // floor shadow shrinks & fades as the creature lifts off
+    const shadowScale = hop.interpolate({ inputRange: [0, 1], outputRange: [1, 0.7] });
+    const shadowOpacity = hop.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.1] });
+
     const yTop = stage >= 2 ? 128 : 132;
     const tongueCy = stage >= 2 ? 160 : 154;
-
-    // eye-open factor combines blink + squint (happy → half-closed crescent)
     const eyeOpen = Animated.multiply(blink, squint.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] }));
 
+    const bodyPath = useMemo(() => blob(s.cx, s.cy, s.radii, s.squash), [s]);
+
+    const lightColor = shade(color, 0.42);
+    const darkColor = shade(color, -0.28);
+    const glowSize = size * 1.25;
+
     return (
-      <View style={{ width: size, height: size }} {...panResponder.panHandlers}>
-        {/* particle layer (centered) */}
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} {...panResponder.panHandlers}>
+        {/* GLOW aura behind everything */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            width: glowSize, height: glowSize,
+            opacity: glowOpacity, transform: [{ scale: glowScale }],
+          }}
+        >
+          <Svg width={glowSize} height={glowSize}>
+            <Defs>
+              <RadialGradient id={ids.glow} cx="50%" cy="50%" r="50%">
+                <Stop offset="0" stopColor={color} stopOpacity={0.9} />
+                <Stop offset="1" stopColor={color} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={glowSize / 2} cy={glowSize / 2} r={glowSize / 2} fill={`url(#${ids.glow})`} />
+          </Svg>
+        </Animated.View>
+
+        {/* floating bubbles */}
+        <Bubble left={size * 0.30} size={9}  delay={0}    dur={3400} color="rgba(255,255,255,0.5)" active={active} />
+        <Bubble left={size * 0.62} size={6}  delay={1200} dur={3000} color={color} active={active} />
+        <Bubble left={size * 0.48} size={7}  delay={2200} dur={3800} color="rgba(255,255,255,0.4)" active={active} />
+        <Bubble left={size * 0.70} size={5}  delay={600}  dur={3200} color={color} active={active} />
+
+        {/* floor shadow */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', bottom: 6,
+            width: 150, height: 24, borderRadius: 75,
+            backgroundColor: '#000',
+            opacity: shadowOpacity,
+            transform: [{ scaleX: shadowScale }],
+          }}
+        />
+
+        {/* particle layer (above body) */}
         <View style={styles.particleLayer} pointerEvents="none">
           {particles.map((p, i) => (
             <Animated.View
@@ -333,8 +438,7 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
                 styles.particle,
                 {
                   width: p.size, height: p.size, borderRadius: p.size / 2,
-                  backgroundColor: p.color,
-                  opacity: p.o,
+                  backgroundColor: p.color, opacity: p.o,
                   transform: [{ translateX: p.x }, { translateY: p.y }, { scale: p.s }],
                 },
               ]}
@@ -342,31 +446,52 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
           ))}
         </View>
 
+        {/* BODY */}
         <Animated.View style={{ width: size, height: size, transform: bodyTransform }}>
-          {/* BODY (no eyes — eyes are an overlay layer) */}
           <Svg width={size} height={size} viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`} style={{ overflow: 'visible' }}>
-            <Path d={blob(s.cx, s.cy, s.radii, s.squash)} fill={color} />
-            <Ellipse cx={s.cx - 22} cy={s.cy - 34} rx={26} ry={16} fill="#fff" opacity={0.16} />
+            <Defs>
+              {/* vertical volume: bright top → base → dark bottom */}
+              <LinearGradient id={ids.shade} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={lightColor} stopOpacity={1} />
+                <Stop offset="0.45" stopColor={color} stopOpacity={1} />
+                <Stop offset="1" stopColor={darkColor} stopOpacity={1} />
+              </LinearGradient>
+            </Defs>
+
+            {/* body with volumetric gradient */}
+            <Path d={bodyPath} fill={`url(#${ids.shade})`} />
+
+            {/* glossy specular highlight */}
+            <Ellipse cx={s.cx - 22} cy={s.cy - 34} rx={26} ry={16} fill="#fff" opacity={0.28} />
+            <Ellipse cx={s.cx - 30} cy={s.cy - 40} rx={9} ry={6} fill="#fff" opacity={0.5} />
+
             {stage >= 1 && (
               <>
-                <Circle cx={s.cx - 30} cy={s.cy + 58} r={7} fill={color} />
-                <Circle cx={s.cx + 34} cy={s.cy + 52} r={5} fill={color} />
+                <Circle cx={s.cx - 30} cy={s.cy + 58} r={7} fill={darkColor} />
+                <Circle cx={s.cx + 34} cy={s.cy + 52} r={5} fill={darkColor} />
               </>
             )}
-            {stage >= 2 && <Circle cx={s.cx + 12} cy={s.cy + 66} r={6} fill={color} />}
+            {stage >= 2 && <Circle cx={s.cx + 12} cy={s.cy + 66} r={6} fill={darkColor} />}
+
             {s.brow && (
               <G stroke="rgba(0,0,0,0.55)" strokeWidth={5} strokeLinecap="round">
                 <Line x1={68} y1={74} x2={92} y2={82} />
                 <Line x1={152} y1={74} x2={128} y2={82} />
               </G>
             )}
+
             {stage >= 1 && (
               <G fill="#fff" opacity={0.22}>
                 <Circle cx={74} cy={124} r={8} />
                 <Circle cx={146} cy={124} r={8} />
               </G>
             )}
-            {s.mouthFill ? (
+
+            {/* mouth — sad gets a downturned curve */}
+            {sad ? (
+              <Path d={`M${s.cx - 16} ${yTop + 8} Q${s.cx} ${yTop - 4} ${s.cx + 16} ${yTop + 8}`}
+                fill="none" stroke="rgba(10,8,6,0.62)" strokeWidth={4} strokeLinecap="round" />
+            ) : s.mouthFill ? (
               <>
                 <Path d={s.mouth} fill="rgba(10,8,6,0.62)" />
                 {s.teeth && s.teeth.map((x, i) => (
@@ -379,7 +504,7 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
             )}
           </Svg>
 
-          {/* EYES overlay — Views so they blink & track on the native driver */}
+          {/* EYES overlay */}
           {s.eyes.map((e, i) => {
             const left = (e.x - e.r) * scale;
             const top = (e.y - e.r) * scale;
@@ -405,7 +530,7 @@ const HypeMascot = forwardRef<HypeMascotRef, Props>(
                       transform: [{ translateX: px }, { translateY: py }],
                     }}
                   >
-                    <View style={{ position: 'absolute', top: pr * 0.25, left: pr * 0.7, width: pr * 0.7, height: pr * 0.7, borderRadius: pr * 0.35, backgroundColor: '#fff' }} />
+                    <View style={{ position: 'absolute', top: pr * 0.2, left: pr * 0.7, width: pr * 0.8, height: pr * 0.8, borderRadius: pr * 0.4, backgroundColor: '#fff' }} />
                   </Animated.View>
                 </View>
               </Animated.View>
