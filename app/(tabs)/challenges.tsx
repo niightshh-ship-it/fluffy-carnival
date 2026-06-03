@@ -22,7 +22,7 @@ export default function ChallengesScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 32, paddingBottom: 80 },
   iconWrap: {
     width: 80, height: 80, borderRadius: Radius.xl,

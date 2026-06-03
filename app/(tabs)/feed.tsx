@@ -107,7 +107,7 @@ export default function FeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   screen: { flex: 1 },
   content: { paddingHorizontal: 18, paddingBottom: 24 },
 

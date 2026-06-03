@@ -42,7 +42,7 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   content: { flex: 1, paddingHorizontal: 18 },
   header: { alignItems: 'center', gap: 6, marginTop: 12, marginBottom: 24 },
   ava: {

@@ -13,6 +13,7 @@ import {
 } from '@expo-google-fonts/space-grotesk';
 import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
 import { GameProvider } from '@/context/GameContext';
+import { AuroraBackground } from '@/components/ui/AuroraBackground';
 import { Colors } from '@/constants/tokens';
 
 SplashScreen.preventAutoHideAsync();
@@ -37,6 +38,7 @@ export default function RootLayout() {
 
   const scene = (
     <View style={styles.scene}>
+      <AuroraBackground />
       <GameProvider>
         <Stack
           screenOptions={{
